@@ -1,0 +1,28 @@
+.gradle/
+build/
+**/build/
+local.properties
+.idea/
+*.iml
+*.apk
+*.aab
+*.jks
+*.keystore
+.env
+
+# Backup temporanei
+*.pre-fullscreen
+*.pre-swagga
+*.bak
+
+/backups/
+
+# Backup locali e file temporanei
+/backups-local/
+*.backup
+*.kts.backup
+*.xml.backup
+
+# Configurazioni riservate
+*.env
+.env.*
