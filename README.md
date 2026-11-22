@@ -1,14 +1,26 @@
-# AlphaBeat DAW Native PRO
+# AlphaBeat SWAGGA LAB PRO
 
-Nuovo progetto Android nativo.
+Open-source Android DJ and fitness music workstation.
 
-## Obiettivi
-- Interfaccia landscape fedele all'immagine AlphaBeat DAW
-- Timeline multitraccia
-- Mixer e controlli interattivi
-- Integrazione successiva del motore Fitness 32 esistente
+Version: 2.2.1
 
-## Sicurezza
-- Progetto indipendente
-- Nessuna modifica all'app Play Store
-- Nessuna modifica al backend Fitness 32
+Features:
+- Native Android DJ console
+- Landscape interface
+- BPM controls
+- Waveform analysis
+- Mixer and faders
+- DigitalFitnessMP3 remix service integration
+
+Android: SDK 26 minimum, SDK 36 target.
+Build: JDK 17 and Android SDK.
+
+Build command: ./gradlew assembleRelease
+
+License: GPL-3.0-or-later.
+See LICENSE and ASSETS-LICENSE.md.
+
+Source:
+https://github.com/digitalfitnessmp3/AlphaBeat-SWAGGA-LAB-PRO
+
+The remote remix service is hosted separately.
