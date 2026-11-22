@@ -23,6 +23,11 @@ public final class SwaggaConsoleView extends FrameLayout {
         void openEdit();
         void channel1();
         void channel2();
+        void channel3();
+        void channel4();
+        void channelVolume(int channel, float value);
+        void muteChannel(int channel);
+        void soloChannel(int channel);
         void seek(float progress);
         void playbackBpm(int bpm);
         void openEq();
@@ -45,9 +50,21 @@ public final class SwaggaConsoleView extends FrameLayout {
     public void setDetectedBpm(int bpm) {
         if (autoBpmControl != null && autoBpmRefresh != null) {
             autoBpmControl.setBpm(bpm);
-            autoBpmRefresh.run();
+            // Aggiorna solo il display: non cambia la velocita audio.
+            if (autoBpmDisplay != null) {
+                autoBpmDisplay.setBpm(bpm);
+            }
+            autoBpmRefreshDisplayOnly();
         }
     }
+
+    private void autoBpmRefreshDisplayOnly() {
+        if (autoBpmRefreshDisplay != null) {
+            autoBpmRefreshDisplay.run();
+        }
+    }
+
+    private Runnable autoBpmRefreshDisplay;
 
     public void setWaveformPeaks(float[] peaks) {
         waveformPeaks = peaks == null ? new float[0] : peaks.clone();
@@ -139,6 +156,8 @@ public final class SwaggaConsoleView extends FrameLayout {
         faderOverlay.setFaderListener((channel, value) -> {
             if (channel == 4) {
                 actions.masterVolume(value);
+            } else if (channel >= 0 && channel < 4) {
+                actions.channelVolume(channel + 1, value);
             }
         });
 
@@ -170,10 +189,14 @@ public final class SwaggaConsoleView extends FrameLayout {
                 new SwaggaBpmControl(context);
         autoBpmControl = bpmControl;
         autoBpmDisplay = bpmDisplay;
-        autoBpmRefresh = () -> {
+        autoBpmRefreshDisplay = () -> {
             visibleBpm[0] = bpmControl.getBpm();
             bpmDisplay.setBpm(visibleBpm[0]);
             bpmNumberOverlay.invalidate();
+        };
+
+        autoBpmRefresh = () -> {
+            autoBpmRefreshDisplay.run();
             actions.playbackBpm(visibleBpm[0]);
         };
 
@@ -211,7 +234,24 @@ public final class SwaggaConsoleView extends FrameLayout {
                 }
 
                 // Mantiene il controllo del gesto fino al rilascio.
-                if (faderDragging) {
+                if (e.getActionMasked() == MotionEvent.ACTION_DOWN
+                && y >= 0.905f && y <= 0.965f) {
+            float[] muteX = {0.066f, 0.234f, 0.402f, 0.568f};
+            float[] soloX = {0.118f, 0.286f, 0.454f, 0.620f};
+
+            for (int i = 0; i < 4; i++) {
+                if (Math.abs(x - muteX[i]) <= 0.022f) {
+                    actions.muteChannel(i + 1);
+                    return true;
+                }
+                if (Math.abs(x - soloX[i]) <= 0.022f) {
+                    actions.soloChannel(i + 1);
+                    return true;
+                }
+            }
+        }
+
+        if (faderDragging) {
                     faderOverlay.onTouchEvent(e);
                     if (e.getActionMasked() == MotionEvent.ACTION_UP
                             || e.getActionMasked() == MotionEvent.ACTION_CANCEL) {
@@ -255,6 +295,14 @@ public final class SwaggaConsoleView extends FrameLayout {
                     }
                     if (x >= 0.18f && x <= 0.29f) {
                         actions.channel2();
+                        return true;
+                    }
+                    if (x >= 0.35f && x <= 0.46f) {
+                        actions.channel3();
+                        return true;
+                    }
+                    if (x >= 0.52f && x <= 0.63f) {
+                        actions.channel4();
                         return true;
                     }
                 }

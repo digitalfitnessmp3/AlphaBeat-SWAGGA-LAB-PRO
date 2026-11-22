@@ -18,14 +18,56 @@ import android.widget.FrameLayout;
 public final class MainActivity extends Activity {
 
     private static final int PICK_AUDIO = 1001;
+    private static final int PICK_AUDIO_CH3 = 1003;
+    private static final int PICK_AUDIO_CH4 = 1004;
+
+    private final Uri[] channelAudio = new Uri[4];
+    private final float[] channelVolume = {
+            0.75f, 0.75f, 0.75f, 0.75f
+    };
+    private final boolean[] channelMuted = new boolean[4];
+    private int activeChannel = 0;
+
     private Uri selectedAudio;
     private android.media.MediaPlayer player;
     private float masterVolume = 0.75f;
 
+    private void applyEffectiveVolume() {
+        if (player == null) return;
+        float volume = channelMuted[activeChannel]
+                ? 0f
+                : masterVolume * channelVolume[activeChannel];
+        player.setVolume(volume, volume);
+    }
+
+    private void setChannelVolume(int channel, float value) {
+        if (channel < 1 || channel > 4) return;
+        channelVolume[channel - 1] =
+                Math.max(0f, Math.min(1f, value));
+        if (activeChannel == channel - 1) {
+            applyEffectiveVolume();
+        }
+    }
+
+    private void muteChannel(int channel) {
+        if (channel < 1 || channel > 4) return;
+        int index = channel - 1;
+        channelMuted[index] = !channelMuted[index];
+        applyEffectiveVolume();
+        Toast.makeText(this,
+                "CH" + channel + (channelMuted[index]
+                        ? " - MUTE ON" : " - MUTE OFF"),
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void soloChannel(int channel) {
+        selectAudioChannel(channel);
+    }
+
     private void setMasterVolume(float value) {
         masterVolume = Math.max(0f, Math.min(1f, value));
         if (player != null) {
-            player.setVolume(masterVolume, masterVolume);
+            applyEffectiveVolume();
         }
     }
     private com.alphabeat.daw.ui.SwaggaConsoleView swaggaView;
@@ -473,7 +515,7 @@ public final class MainActivity extends Activity {
                 player.setDataSource(this, selectedAudio);
                 player.prepare();
                 attachSwaggaEq();
-                player.setVolume(masterVolume, masterVolume);
+                applyEffectiveVolume();
                 player.setOnCompletionListener(mp -> {
                     mp.seekTo(0);
                 });
@@ -494,7 +536,7 @@ public final class MainActivity extends Activity {
     private boolean remixInProgress = false;
     private Uri originalAudio;
 
-    private int selectedTargetBpm = 128;
+    private int selectedTargetBpm = 160;
 
     private void showTargetBpmSelector() {
         final int[] values = {128, 140, 150, 160, 180};
@@ -525,6 +567,7 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+
     private void showRemixBpmDialog() {
         showRemixBpmDialog(false, selectedTargetBpm);
     }
@@ -543,60 +586,89 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        final int[] bpmValues = {128, 140, 150, 160, 180};
+        final String[] bpmLabels = {
+                "128", "140", "150", "160", "180"
+        };
+
         android.widget.LinearLayout layout =
                 new android.widget.LinearLayout(this);
         layout.setOrientation(1);
+
         int pad = (int) (20 * getResources()
                 .getDisplayMetrics().density);
         layout.setPadding(pad, pad, pad, pad);
 
-        android.widget.CheckBox manual =
-                new android.widget.CheckBox(this);
-        manual.setText("BPM originale manuale");
-        manual.setChecked(manualDefault);
-        layout.addView(manual);
+        android.widget.TextView original =
+                new android.widget.TextView(this);
+        original.setText(manualDefault
+                ? "BPM ORIGINALI - INSERIMENTO MANUALE"
+                : "BPM ORIGINALI - AUTOMATICI");
+        original.setTextSize(15);
+        layout.addView(original);
 
         android.widget.EditText source =
                 new android.widget.EditText(this);
-        source.setHint("BPM originale (70-200)");
-        source.setInputType(2);
-        source.setEnabled(manualDefault);
+        source.setHint("BPM originali (70-200)");
+        source.setInputType(
+                android.text.InputType.TYPE_CLASS_NUMBER);
+        source.setVisibility(manualDefault
+                ? android.view.View.VISIBLE
+                : android.view.View.GONE);
         layout.addView(source);
 
-        manual.setOnCheckedChangeListener(
-                (button, checked) -> source.setEnabled(checked));
+        android.widget.TextView title =
+                new android.widget.TextView(this);
+        title.setText("VELOCITÀ DEL REMIX");
+        title.setTextSize(17);
+        title.setPadding(0, pad, 0, pad / 2);
+        layout.addView(title);
 
-        android.widget.EditText target =
-                new android.widget.EditText(this);
-        target.setHint("BPM desiderati");
-        target.setInputType(2);
-        target.setText(String.valueOf(targetDefault));
-        layout.addView(target);
+        android.widget.RadioGroup group =
+                new android.widget.RadioGroup(this);
+        group.setOrientation(
+                android.widget.RadioGroup.HORIZONTAL);
+
+        for (int bpm : bpmValues) {
+            android.widget.RadioButton button =
+                    new android.widget.RadioButton(this);
+            button.setText(String.valueOf(bpm));
+            button.setTextSize(13);
+            button.setTag(bpm);
+            button.setPadding(0, 0, pad / 3, 0);
+            group.addView(button);
+            button.setChecked(bpm == targetDefault);
+        }
+
+        layout.addView(group);
 
         new android.app.AlertDialog.Builder(this)
-                .setTitle("FITNESS 32 - REMIX")
+                .setTitle("REMIX FITNESS 32")
                 .setView(layout)
                 .setNegativeButton("ANNULLA", null)
-                .setPositiveButton("CREA REMIX", (dialog, which) -> {
+                .setPositiveButton("CREA IL MIO REMIX",
+                        (dialog, which) -> {
                     try {
-                        int sourceBpm = manual.isChecked()
-                                ? Integer.parseInt(source.getText().toString().trim())
+                        int sourceBpm = manualDefault
+                                ? Integer.parseInt(
+                                    source.getText().toString().trim())
                                 : 0;
-                        int targetBpm =
-                                Integer.parseInt(target.getText().toString().trim());
 
-                        if (manual.isChecked()
-                                && (sourceBpm < 70 || sourceBpm > 200)) {
+                        if (manualDefault &&
+                                (sourceBpm < 70 || sourceBpm > 200)) {
                             throw new NumberFormatException();
                         }
 
-                        if (targetBpm != 128 && targetBpm != 140
-                                && targetBpm != 150 && targetBpm != 160
-                                && targetBpm != 180) {
-                            Toast.makeText(this,
-                                    "BPM disponibili: 128, 140, 150, 160, 180",
-                                    Toast.LENGTH_LONG).show();
-                            return;
+                        int targetBpm = targetDefault;
+
+                        for (int i = 0; i < group.getChildCount(); i++) {
+                            android.widget.RadioButton button =
+                                    (android.widget.RadioButton)
+                                            group.getChildAt(i);
+                            if (button.isChecked()) {
+                                targetBpm = (Integer) button.getTag();
+                                break;
+                            }
                         }
 
                         if (sourceBpm != 0 && targetBpm < sourceBpm) {
@@ -606,16 +678,17 @@ public final class MainActivity extends Activity {
                             return;
                         }
 
+                        selectedTargetBpm = targetBpm;
                         createFitnessRemix(sourceBpm, targetBpm);
+
                     } catch (NumberFormatException e) {
                         Toast.makeText(this,
-                                "Inserisci BPM validi",
+                                "Inserisci BPM originali validi",
                                 Toast.LENGTH_LONG).show();
                     }
                 })
                 .show();
     }
-
 
     private static final int SAVE_REMIX_MP3 = 1002;
     private Uri readyRemix;
@@ -708,6 +781,13 @@ public final class MainActivity extends Activity {
                     selectedAudio = Uri.fromFile(remix);
                     readyRemix = selectedAudio;
                     remixInProgress = false;
+
+                    // Il remix e' gia' elaborato al BPM richiesto.
+                    // Evita di applicare un secondo cambio di velocita'.
+                    swaggaPlaybackBpm = 128;
+                    if (swaggaView != null) {
+                        swaggaView.setDetectedBpm(targetBpm);
+                    }
                     Toast.makeText(this,
                             "REMIX PRONTO! Premi PLAY",
                             Toast.LENGTH_LONG).show();
@@ -759,24 +839,39 @@ public final class MainActivity extends Activity {
     }
 
     private void selectAudioChannel(int channel) {
-        Uri audio = channel == 1 ? originalAudio : readyRemix;
+        if (channel < 1 || channel > 4) return;
+
+        if (channel >= 3 && channelAudio[channel - 1] == null) {
+            openAudioPickerForChannel(channel);
+            return;
+        }
+
+        Uri audio = channel == 1 ? originalAudio
+                : channel == 2 ? readyRemix
+                : channelAudio[channel - 1];
 
         if (audio == null) {
             Toast.makeText(this,
-                    channel == 1
-                            ? "Carica prima un brano originale"
-                            : "Crea prima un remix Fitness 32",
+                    channel == 1 ? "Carica prima un brano originale"
+                    : "Crea prima un remix Fitness 32",
                     Toast.LENGTH_SHORT).show();
             return;
         }
 
         stopAudio();
+        activeChannel = channel - 1;
         selectedAudio = audio;
+        applyEffectiveVolume();
+
+        if (channel == 2) {
+            swaggaPlaybackBpm = 128;
+            if (swaggaView != null) {
+                swaggaView.setDetectedBpm(selectedTargetBpm);
+            }
+        }
 
         Toast.makeText(this,
-                channel == 1
-                        ? "CH 1 - ORIGINALE"
-                        : "CH 2 - REMIX FITNESS 32",
+                "CH" + channel + " - CANALE SELEZIONATO",
                 Toast.LENGTH_SHORT).show();
     }
 
@@ -827,10 +922,18 @@ public final class MainActivity extends Activity {
 
 
     private void openAudioPicker() {
+        openAudioPickerForChannel(1);
+    }
+
+    private void openAudioPickerForChannel(int channel) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.setType("audio/*");
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        startActivityForResult(intent, PICK_AUDIO);
+
+        int requestCode = channel == 3 ? PICK_AUDIO_CH3
+                : channel == 4 ? PICK_AUDIO_CH4 : PICK_AUDIO;
+
+        startActivityForResult(intent, requestCode);
     }
 
     @Override
@@ -843,6 +946,25 @@ public final class MainActivity extends Activity {
                     && data.getData() != null) {
                 saveRemixTo(data.getData());
             }
+            return;
+        }
+
+        if ((requestCode == PICK_AUDIO_CH3
+                || requestCode == PICK_AUDIO_CH4)
+                && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+
+            int channel = requestCode == PICK_AUDIO_CH3 ? 3 : 4;
+            Uri audio = data.getData();
+
+            channelAudio[channel - 1] = audio;
+            stopAudio();
+            activeChannel = channel - 1;
+            selectedAudio = audio;
+
+            Toast.makeText(this,
+                    "CH" + channel + " - BRANO CARICATO",
+                    Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -984,6 +1106,22 @@ public final class MainActivity extends Activity {
                     public void channel2() {
                         selectAudioChannel(2);
                     }
+                    public void channel3() {
+                        selectAudioChannel(3);
+                    }
+                    public void channel4() {
+                        selectAudioChannel(4);
+                    }
+                    public void channelVolume(int channel, float value) {
+                        setChannelVolume(channel, value);
+                    }
+                    public void muteChannel(int channel) {
+                        MainActivity.this.muteChannel(channel);
+                    }
+                    public void soloChannel(int channel) {
+                        MainActivity.this.soloChannel(channel);
+                    }
+
                     public void file() { openAudioPicker(); }
                     public void play() { playAudio(); }
                     public void pause() { pauseAudio(); }
