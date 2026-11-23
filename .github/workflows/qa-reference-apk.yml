@@ -1,0 +1,49 @@
+name: QA compare reference 2.2.1 build (no Play publishing)
+
+on:
+  push:
+    branches: [qa/swagga-2.2.2-play-20261123]
+    paths:
+      - ".github/workflows/qa-reference-apk.yml"
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - "gradlew"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-reference-debug:
+    name: Build reference debug APK (analysis ONLY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout QA branch
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Compile reference 2.2.1 debug
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Record reference APK fingerprint
+        run: |
+          sha256sum app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E 'classes[0-9]*.dex|AndroidManifest.xml'
+      - name: Upload analysis artifact (not a Play release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: swagga-2.2.1-reference-DEBUG-NOT-FOR-INSTALL
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
