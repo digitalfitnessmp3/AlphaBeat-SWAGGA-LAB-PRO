@@ -630,6 +630,7 @@ public final class MainActivity extends Activity {
         android.widget.GridLayout bpmGrid =
                 new android.widget.GridLayout(this);
         bpmGrid.setColumnCount(3);
+        bpmGrid.setRowCount(3);
         java.util.List<android.widget.RadioButton> bpmButtons =
                 new java.util.ArrayList<>();
 
@@ -637,12 +638,17 @@ public final class MainActivity extends Activity {
             android.widget.RadioButton button =
                     new android.widget.RadioButton(this);
             button.setText(String.valueOf(bpm));
-            button.setTextSize(13);
+            button.setTextSize(14);
             button.setTag(bpm);
-            button.setPadding(0, 0, pad / 3, 0);
-            bpmGrid.addView(button);
-            bpmButtons.add(button);
             button.setChecked(bpm == targetDefault);
+            android.widget.GridLayout.LayoutParams cell =
+                    new android.widget.GridLayout.LayoutParams();
+            cell.width = 0;
+            cell.columnSpec = android.widget.GridLayout.spec(
+                    android.widget.GridLayout.UNDEFINED, 1f);
+            cell.setMargins(0, 0, 0, pad / 3);
+            bpmGrid.addView(button, cell);
+            bpmButtons.add(button);
             button.setOnClickListener(v -> {
                 for (android.widget.RadioButton other : bpmButtons) {
                     other.setChecked(other == button);
