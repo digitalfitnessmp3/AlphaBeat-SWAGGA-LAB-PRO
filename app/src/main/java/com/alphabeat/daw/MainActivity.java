@@ -103,7 +103,7 @@ public final class MainActivity extends Activity {
 
 
     private void showSwaggaSetup() {
-        final int[] bpmValues = {128, 140, 150, 160, 180};
+        final int[] bpmValues = {128, 140, 150, 160, 180, 200, 220, 240, 260};
         final int[] pendingBpm = {selectedTargetBpm};
 
         android.widget.LinearLayout layout =
@@ -143,7 +143,8 @@ public final class MainActivity extends Activity {
                 new android.widget.Spinner(this);
 
         String[] options = {"128 BPM", "140 BPM", "150 BPM",
-                            "160 BPM", "180 BPM"};
+                            "160 BPM", "180 BPM", "200 BPM",
+                            "220 BPM", "240 BPM", "260 BPM"};
 
         android.widget.ArrayAdapter<String> adapter =
                 new android.widget.ArrayAdapter<>(
@@ -367,7 +368,7 @@ public final class MainActivity extends Activity {
     }
 
     private void setSwaggaPlaybackBpm(int bpm) {
-        swaggaPlaybackBpm = Math.max(60, Math.min(200, bpm));
+        swaggaPlaybackBpm = Math.max(60, Math.min(260, bpm));
 
         if (player != null) {
             applySwaggaPlaybackSpeed();
@@ -539,10 +540,11 @@ public final class MainActivity extends Activity {
     private int selectedTargetBpm = 160;
 
     private void showTargetBpmSelector() {
-        final int[] values = {128, 140, 150, 160, 180};
+        final int[] values = {128, 140, 150, 160, 180, 200, 220, 240, 260};
         final String[] labels = {
                 "128 BPM", "140 BPM", "150 BPM",
-                "160 BPM", "180 BPM"
+                "160 BPM", "180 BPM", "200 BPM",
+                "220 BPM", "240 BPM", "260 BPM"
         };
 
         int selected = 0;
@@ -586,9 +588,10 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        final int[] bpmValues = {128, 140, 150, 160, 180};
+        final int[] bpmValues = {128, 140, 150, 160, 180, 200, 220, 240, 260};
         final String[] bpmLabels = {
-                "128", "140", "150", "160", "180"
+                "128", "140", "150", "160", "180",
+                "200", "220", "240", "260"
         };
 
         android.widget.LinearLayout layout =
@@ -624,10 +627,11 @@ public final class MainActivity extends Activity {
         title.setPadding(0, pad, 0, pad / 2);
         layout.addView(title);
 
-        android.widget.RadioGroup group =
-                new android.widget.RadioGroup(this);
-        group.setOrientation(
-                android.widget.RadioGroup.HORIZONTAL);
+        android.widget.GridLayout bpmGrid =
+                new android.widget.GridLayout(this);
+        bpmGrid.setColumnCount(3);
+        java.util.List<android.widget.RadioButton> bpmButtons =
+                new java.util.ArrayList<>();
 
         for (int bpm : bpmValues) {
             android.widget.RadioButton button =
@@ -636,11 +640,17 @@ public final class MainActivity extends Activity {
             button.setTextSize(13);
             button.setTag(bpm);
             button.setPadding(0, 0, pad / 3, 0);
-            group.addView(button);
+            bpmGrid.addView(button);
+            bpmButtons.add(button);
             button.setChecked(bpm == targetDefault);
+            button.setOnClickListener(v -> {
+                for (android.widget.RadioButton other : bpmButtons) {
+                    other.setChecked(other == button);
+                }
+            });
         }
 
-        layout.addView(group);
+        layout.addView(bpmGrid);
 
         new android.app.AlertDialog.Builder(this)
                 .setTitle("REMIX FITNESS 32")
@@ -661,10 +671,7 @@ public final class MainActivity extends Activity {
 
                         int targetBpm = targetDefault;
 
-                        for (int i = 0; i < group.getChildCount(); i++) {
-                            android.widget.RadioButton button =
-                                    (android.widget.RadioButton)
-                                            group.getChildAt(i);
+                        for (android.widget.RadioButton button : bpmButtons) {
                             if (button.isChecked()) {
                                 targetBpm = (Integer) button.getTag();
                                 break;
