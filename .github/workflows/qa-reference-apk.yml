@@ -1,4 +1,4 @@
-name: QA compare reference 2.2.1 build (no Play publishing)
+name: QA compile reconstructed 2.2.2 (no Play publishing)
 
 on:
   push:
@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  build-reference-debug:
-    name: Build reference debug APK (analysis ONLY)
+  build-qa-debug:
+    name: Build reconstructed QA debug APK (analysis ONLY)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -41,18 +41,18 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Compile reference 2.2.1 debug
+      - name: Compile reconstructed QA 2.2.2 debug
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
-      - name: Record reference APK fingerprint
+      - name: Record QA APK fingerprint
         run: |
           sha256sum app/build/outputs/apk/debug/app-debug.apk
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E 'classes[0-9]*.dex|AndroidManifest.xml'
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.2.1-reference-DEBUG-NOT-FOR-INSTALL
+          name: swagga-2.2.2-reconstructed-DEBUG-NOT-FOR-INSTALL
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
