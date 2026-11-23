@@ -641,13 +641,13 @@ public final class MainActivity extends Activity {
             button.setTextSize(14);
             button.setTag(bpm);
             button.setChecked(bpm == targetDefault);
-            android.widget.GridLayout.LayoutParams cell =
+            android.widget.GridLayout.LayoutParams params =
                     new android.widget.GridLayout.LayoutParams();
-            cell.width = 0;
-            cell.columnSpec = android.widget.GridLayout.spec(
+            params.width = 0;
+            params.columnSpec = android.widget.GridLayout.spec(
                     android.widget.GridLayout.UNDEFINED, 1f);
-            cell.setMargins(0, 0, 0, pad / 3);
-            bpmGrid.addView(button, cell);
+            params.setMargins(0, 0, 0, pad / 3);
+            bpmGrid.addView(button, params);
             bpmButtons.add(button);
             button.setOnClickListener(v -> {
                 for (android.widget.RadioButton other : bpmButtons) {
