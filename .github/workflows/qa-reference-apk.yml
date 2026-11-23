@@ -28,12 +28,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Install Android command line tools
+        run: |
+          mkdir -p "$RUNNER_TEMP/android-sdk/cmdline-tools/latest"
+          curl -fsSL --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/cmdline-tools.zip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-cmdline-unpack"
+          mv "$RUNNER_TEMP/android-cmdline-unpack/cmdline-tools/"* "$RUNNER_TEMP/android-sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
       - name: Install Android API 36
         run: |
-          echo "SDK: $ANDROID_HOME"
-          sdkmanager --version
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Compile reference 2.2.1 debug
         run: |
           chmod +x gradlew
