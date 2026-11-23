@@ -21,7 +21,7 @@ public final class SwaggaBpmDisplay extends View {
     }
 
     public void setBpm(int value) {
-        bpm = Math.max(60, Math.min(200, value));
+        bpm = Math.max(60, Math.min(260, value));
         invalidate();
     }
 
