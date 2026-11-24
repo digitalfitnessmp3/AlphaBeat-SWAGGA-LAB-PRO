@@ -957,8 +957,8 @@ public final class MainActivity extends Activity {
                         new android.app.AlertDialog.Builder(this)
                                 .setTitle("V6 Club QA")
                                 .setMessage(error.contains("HTTP 503") || error.contains("HTTP 404")
-                                    ? "Motore Batida non ancora attivo sul server. Il brano originale resta intatto."
-                                    : "Remix non riuscito: " + error)
+                                    ? "Server QA non disponibile o lavoro scaduto. Il brano originale resta intatto."
+                                    : "Remix non riuscito: " + error + "\nRiprova con lo stesso brano e gli stessi BPM per recuperare il lavoro.")
                                 .setNegativeButton("CHIUDI", null)
                                 .setPositiveButton("RIPROVA", (dialog, which) -> showBatidaRemixDialog())
                                 .show();

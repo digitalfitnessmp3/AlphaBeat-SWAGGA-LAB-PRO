@@ -1,4 +1,4 @@
-name: QA SWAGGA 2.2.4 V6 Club APK (not Play)
+name: QA SWAGGA 2.2.5 V6 Club APK (not Play)
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Compile side-by-side QA 2.2.4 debug
+      - name: Compile side-by-side QA 2.2.5 debug
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
@@ -55,7 +55,7 @@ jobs:
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.2.4-QA-V6-CLUB-DEBUG
+          name: swagga-2.2.5-QA-V6-RECOVERY-DEBUG
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7

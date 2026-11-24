@@ -15,7 +15,44 @@ public final class FitnessRemixClient {
 
     // QA only: never enable the legacy public route for this mode.
     private static final String V6 = "https://digitalfitnessmp3-menu-staging-test.onrender.com/api/free-fitness/batida-extreme/jobs";
+    private static final String EXTENDED = "https://digitalfitnessmp3-menu-staging-test.onrender.com/api/free-fitness/remix";
     private FitnessRemixClient() {}
+    private static void pause(long ms) throws IOException {
+        try { Thread.sleep(ms); } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); throw new IOException("Operazione interrotta", e);
+        }
+    }
+    private static String newToken() {
+        byte[] bytes = new byte[32]; new java.security.SecureRandom().nextBytes(bytes);
+        return android.util.Base64.encodeToString(bytes, android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING | android.util.Base64.NO_WRAP);
+    }
+    private static boolean existingJob(String token) throws IOException {
+        HttpURLConnection c = jobGet("/status", token);
+        try {
+            int code = c.getResponseCode();
+            if (code == 200) return true;
+            if (code == 404) return false;
+            throw new IOException("HTTP " + code + ": impossibile verificare il lavoro precedente");
+        } finally { c.disconnect(); }
+    }
+    private static void awaitFreeWorker() throws IOException {
+        long deadline = android.os.SystemClock.elapsedRealtime() + 720000L;
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            HttpURLConnection c = (HttpURLConnection) new URL(V6.replace("/jobs", "/status")).openConnection();
+            c.setConnectTimeout(15000); c.setReadTimeout(20000); c.setUseCaches(false);
+            try {
+                if (c.getResponseCode() == 200) {
+                    org.json.JSONObject j = json(c);
+                    if (!j.optBoolean("enabled") || !j.optBoolean("async_jobs") || !j.has("busy"))
+                        throw new V6Terminal("Server QA non aggiornato o non disponibile");
+                    if (!j.optBoolean("busy")) return;
+                }
+            } catch (V6Terminal e) { throw e; }
+            catch (IOException ignored) {} finally { c.disconnect(); }
+            pause(15000);
+        }
+        throw new IOException("Motore ancora occupato: riprova senza cambiare brano");
+    }
 
     public static File createRemix(Context context, Uri source, int targetBpm)
             throws IOException {
@@ -100,6 +137,20 @@ public final class FitnessRemixClient {
             throw new IOException("Target BPM non supportato");
         }
 
+        android.content.SharedPreferences prefs = context.getSharedPreferences("v6_jobs", Context.MODE_PRIVATE);
+        String key = source.toString() + "|" + sourceBpm + "|" + targetBpm;
+        String token = batida ? prefs.getString(key, "") : "";
+        if (batida && !token.isEmpty()) {
+            if (existingJob(token)) {
+                try { File result = followV6(context, token); prefs.edit().remove(key).commit(); return result; }
+                catch (V6Terminal e) { prefs.edit().remove(key).commit(); throw e; }
+            }
+        }
+        if (batida && token.isEmpty()) {
+            token = newToken();
+            if (!prefs.edit().putString(key, token).commit()) throw new IOException("Impossibile salvare identificativo remix");
+        }
+        if (batida) awaitFreeWorker();
         String boundary = "DFMP3-" + UUID.randomUUID();
         HttpURLConnection connection = null;
         File output = null;
@@ -109,7 +160,9 @@ public final class FitnessRemixClient {
         try {
             requestBody = File.createTempFile("dfmp3-upload-", ".multipart", context.getCacheDir());
             connection = (HttpURLConnection)
-                    new URL(batida ? V6 : ENDPOINT).openConnection();
+                    new URL(batida ? V6 : (targetBpm > 180 ? EXTENDED : ENDPOINT)).openConnection();
+            connection.setInstanceFollowRedirects(false);
+            if (batida) connection.setRequestProperty("X-Batida-Job", token);
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15000);
@@ -181,11 +234,13 @@ public final class FitnessRemixClient {
             int status = connection.getResponseCode();
 
             if (batida && status == 202) {
-                String token = readJobToken(connection);
+                String returnedToken = readJobToken(connection);
+                if (!token.equals(returnedToken)) throw new IOException("Identificativo job non corrispondente");
                 connection.disconnect();
                 connection = null;
                 phase = "Recupero V6 Club QA";
-                return followV6(context, token);
+                try { File result = followV6(context, token); prefs.edit().remove(key).commit(); return result; }
+                catch (V6Terminal e) { prefs.edit().remove(key).commit(); throw e; }
             }
             if (status != 200 || batida) {
                 String detail = "";
