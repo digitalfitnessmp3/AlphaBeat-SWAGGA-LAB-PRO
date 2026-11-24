@@ -1,8 +1,8 @@
-name: QA SWAGGA 2.2.3 side-by-side APK (not Play)
+name: QA SWAGGA 2.2.3 STABLE transport APK (not Play)
 
 on:
   push:
-    branches: [qa/swagga-2.2.3-side-by-side-20261124]
+    branches: [qa/swagga-transport-fixed-length-20261124]
     paths:
       - ".github/workflows/qa-reference-apk.yml"
       - "app/**"
@@ -55,7 +55,7 @@ jobs:
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.2.3-SIDE-BY-SIDE-DEBUG
+          name: swagga-2.2.3-QA-STABLE-DEBUG
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
