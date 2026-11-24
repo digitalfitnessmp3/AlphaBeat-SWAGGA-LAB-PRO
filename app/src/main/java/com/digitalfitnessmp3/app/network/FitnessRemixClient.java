@@ -66,6 +66,10 @@ public final class FitnessRemixClient {
     }
 
     public static File createRemix(Context context, Uri source, int sourceBpm, int targetBpm, boolean batida) throws IOException {
+        return createRemix(context, source, sourceBpm, targetBpm, batida, phase -> {});
+    }
+    public static File createRemix(Context context, Uri source, int sourceBpm, int targetBpm, boolean batida, java.util.function.Consumer<String> progress) throws IOException {
+        progress.accept("PREPARAZIONE AUDIO");
         if (batida && (targetBpm != 140 || sourceBpm > 180)) {
             throw new IOException("Batida Extreme: target 140 BPM, sorgente 70-180 BPM musicali");
         }
@@ -142,7 +146,7 @@ public final class FitnessRemixClient {
         String token = batida ? prefs.getString(key, "") : "";
         if (batida && !token.isEmpty()) {
             if (existingJob(token)) {
-                try { File result = followV6(context, token); prefs.edit().remove(key).commit(); return result; }
+                try { File result = followV6(context, token, progress); prefs.edit().remove(key).commit(); return result; }
                 catch (V6Terminal e) { prefs.edit().remove(key).commit(); throw e; }
             }
         }
@@ -150,7 +154,7 @@ public final class FitnessRemixClient {
             token = newToken();
             if (!prefs.edit().putString(key, token).commit()) throw new IOException("Impossibile salvare identificativo remix");
         }
-        if (batida) awaitFreeWorker();
+        if (batida) { progress.accept("ATTESA MOTORE"); awaitFreeWorker(); }
         String boundary = "DFMP3-" + UUID.randomUUID();
         HttpURLConnection connection = null;
         File output = null;
@@ -223,6 +227,7 @@ public final class FitnessRemixClient {
             }
 
             phase = "Invio audio";
+            progress.accept("UPLOAD AUDIO");
             connection.setFixedLengthStreamingMode(requestBody.length());
             try (InputStream in = new FileInputStream(requestBody);
                  OutputStream out = connection.getOutputStream()) {
@@ -231,6 +236,7 @@ public final class FitnessRemixClient {
                 while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
             }
             phase = "Risposta server";
+            progress.accept("ELABORAZIONE SERVER");
             int status = connection.getResponseCode();
 
             if (batida && status == 202) {
@@ -239,7 +245,7 @@ public final class FitnessRemixClient {
                 connection.disconnect();
                 connection = null;
                 phase = "Recupero V6 Club QA";
-                try { File result = followV6(context, token); prefs.edit().remove(key).commit(); return result; }
+                try { File result = followV6(context, token, progress); prefs.edit().remove(key).commit(); return result; }
                 catch (V6Terminal e) { prefs.edit().remove(key).commit(); throw e; }
             }
             if (status != 200 || batida) {
@@ -288,6 +294,7 @@ public final class FitnessRemixClient {
             }
 
             phase = "Download MP3";
+            progress.accept("DOWNLOAD MP3");
             output = File.createTempFile(
                     "dfmp3-remix-", ".mp3", context.getCacheDir());
 
@@ -352,7 +359,8 @@ public final class FitnessRemixClient {
         return status == 408 || status == 429 || status == 502 || status == 503 || status == 504;
     }
 
-    private static File followV6(Context context, String token) throws IOException {
+    private static File followV6(Context context, String token, java.util.function.Consumer<String> progress) throws IOException {
+        progress.accept("RECUPERO REMIX");
         long deadline = android.os.SystemClock.elapsedRealtime() + 1320000L;
         long delay = 2500;
         while (android.os.SystemClock.elapsedRealtime() < deadline) {
@@ -368,6 +376,16 @@ public final class FitnessRemixClient {
                 }
                 org.json.JSONObject state = json(c);
                 String s = state.optString("state");
+                if ("running".equals(s)) {
+                    String phase = state.optString("phase", "starting");
+                    switch (phase) {
+                        case "analysis": progress.accept("ANALISI BPM"); break;
+                        case "mix": progress.accept("REMIX CLUB"); break;
+                        case "encoding": progress.accept("CODIFICA MP3"); break;
+                        case "validation": progress.accept("VERIFICA AUDIO"); break;
+                        default: progress.accept("AVVIO MOTORE");
+                    }
+                }
                 if ("failed".equals(s)) throw new V6Terminal(state.optString("error", "Elaborazione V6 fallita"));
                 ready = "ready".equals(s);
                 if (!ready && !"running".equals(s)) throw new V6Terminal("Stato V6 non riconosciuto");
@@ -377,6 +395,7 @@ public final class FitnessRemixClient {
             finally { if (c != null) c.disconnect(); }
 
             if (ready) {
+                progress.accept("DOWNLOAD MP3");
                 File output = null; boolean complete = false;
                 try {
                     c = jobGet("/result", token);

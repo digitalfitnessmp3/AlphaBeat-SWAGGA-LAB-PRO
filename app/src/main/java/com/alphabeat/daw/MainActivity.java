@@ -925,6 +925,7 @@ public final class MainActivity extends Activity {
                 ? originalAudio : selectedAudio;
 
         remixInProgress = true;
+        if (swaggaView != null) swaggaView.setRemixPhase("PREPARAZIONE AUDIO");
 
         Toast.makeText(this, modeLabel + ": elaborazione avviata",
                 Toast.LENGTH_LONG).show();
@@ -933,7 +934,10 @@ public final class MainActivity extends Activity {
             try {
                 java.io.File remix =
                     com.digitalfitnessmp3.app.network.FitnessRemixClient
-                        .createRemix(getApplicationContext(), source, sourceBpm, targetBpm, batida);
+                        .createRemix(getApplicationContext(), source, sourceBpm, targetBpm, batida,
+                            phase -> runOnUiThread(() -> {
+                                if (remixInProgress && swaggaView != null) swaggaView.setRemixPhase(phase);
+                            }));
 
                 runOnUiThread(() -> {
                     stopAudio();
@@ -941,6 +945,7 @@ public final class MainActivity extends Activity {
                     readyRemix = selectedAudio;
                     readyRemixV6 = batida;
                     remixInProgress = false;
+                    if (swaggaView != null) swaggaView.setRemixPhase(null);
                     updateTrackInfo(selectedAudio,
                             originalTrackTitle + " - " + modeLabel + " " + targetBpm + " BPM");
 
@@ -961,6 +966,7 @@ public final class MainActivity extends Activity {
 
                 runOnUiThread(() -> {
                     remixInProgress = false;
+                    if (swaggaView != null) swaggaView.setRemixPhase(null);
 
                     String error = e.getMessage() == null
                             ? "" : e.getMessage();

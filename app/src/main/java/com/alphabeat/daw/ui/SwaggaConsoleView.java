@@ -53,6 +53,12 @@ public final class SwaggaConsoleView extends FrameLayout {
     private int displayedDurationMs = 0;
     private int displayedPositionMs = 0;
     private View trackInfoOverlay;
+    private String remixPhase;
+    public void setRemixPhase(String phase) {
+        if (java.util.Objects.equals(remixPhase, phase)) return;
+        remixPhase = phase;
+        if (timelineOverlay != null) timelineOverlay.invalidate();
+    }
     private View timelineOverlay;
     private int timelineBpm = 0;
     private int timelineCount = 0;
@@ -172,11 +178,12 @@ public final class SwaggaConsoleView extends FrameLayout {
                 paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
                 paint.setTextSize(h * .023f);
                 paint.setColor(Color.WHITE);
-                String label = "MULTITRACK TIMELINE";
+                String label = remixPhase == null ? "MULTITRACK TIMELINE" : remixPhase;
                 canvas.drawText(label, w * .022f, h * .507f, paint);
                 float labelEnd = w * .022f + paint.measureText(label) + w * .016f;
                 paint.setColor(Color.rgb(139, 255, 30));
-                canvas.drawText(timelineBpm > 0 ? "•  SMART WAVE 32" : "•  32 COUNTS", labelEnd, h * .507f, paint);
+                if (remixPhase == null) canvas.drawText(timelineBpm > 0 ? "•  SMART WAVE 32" : "•  32 COUNTS", labelEnd, h * .507f, paint);
+                else canvas.drawText("•  IN CORSO", labelEnd, h * .507f, paint);
 
                 final float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
                 final float groupGap = timelineBpm > 0 ? 0f : w * .006f;
