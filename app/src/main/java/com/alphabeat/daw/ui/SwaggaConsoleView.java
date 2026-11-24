@@ -41,6 +41,31 @@ public final class SwaggaConsoleView extends FrameLayout {
     private View waveformOverlay;
     private boolean faderDragging = false;
     private boolean waveformDragging = false;
+    private String displayedTrackTitle = null;
+    private int displayedDurationMs = 0;
+    private int displayedPositionMs = 0;
+    private View trackInfoOverlay;
+
+    // La grafica PNG contiene un testo segnaposto: sovrascriviamo soltanto
+    // il riquadro del titolo e del timer, senza alterare gli altri controlli.
+    public void setTrackInfo(String title, int durationMs) {
+        displayedTrackTitle = title == null ? "Brano audio" : title.trim();
+        displayedDurationMs = Math.max(0, durationMs);
+        displayedPositionMs = 0;
+        if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
+    }
+
+    public void setTrackPosition(int positionMs, int durationMs) {
+        displayedDurationMs = Math.max(0, durationMs);
+        displayedPositionMs = Math.max(0, Math.min(positionMs, displayedDurationMs));
+        if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
+    }
+
+    private static String formatTrackTime(int ms) {
+        long seconds = Math.max(0, ms) / 1000L;
+        return String.format(java.util.Locale.ITALY, "%02d:%02d",
+                seconds / 60L, seconds % 60L);
+    }
 
 
     private SwaggaBpmControl autoBpmControl;
@@ -90,6 +115,52 @@ public final class SwaggaConsoleView extends FrameLayout {
                 LayoutParams.MATCH_PARENT,
                 LayoutParams.MATCH_PARENT
         ));
+
+        // Overlay titolo/timer: il testo nella PNG e' statico.
+        trackInfoOverlay = new View(context) {
+            private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Paint coverPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                if (displayedTrackTitle == null) return;
+
+                float w = getWidth();
+                float h = getHeight();
+                // Non coprire l'icona a sinistra, la barra o i bordi neon.
+                coverPaint.setColor(Color.rgb(3, 9, 12));
+                canvas.drawRect(w * 0.070f, h * 0.278f,
+                        w * 0.680f, h * 0.324f, coverPaint);
+                canvas.drawRect(w * 0.888f, h * 0.278f,
+                        w * 0.982f, h * 0.324f, coverPaint);
+
+                textPaint.setColor(Color.WHITE);
+                textPaint.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+                textPaint.setTextAlign(Paint.Align.LEFT);
+                textPaint.setTextSize(h * 0.026f);
+
+                String visibleTitle = displayedTrackTitle;
+                float availableWidth = w * 0.600f;
+                if (textPaint.measureText(visibleTitle) > availableWidth) {
+                    final String ellipsis = "…";
+                    while (!visibleTitle.isEmpty()
+                            && textPaint.measureText(visibleTitle + ellipsis) > availableWidth) {
+                        visibleTitle = visibleTitle.substring(0, visibleTitle.length() - 1);
+                    }
+                    visibleTitle += ellipsis;
+                }
+                canvas.drawText(visibleTitle, w * 0.074f, h * 0.312f, textPaint);
+
+                textPaint.setTextAlign(Paint.Align.RIGHT);
+                textPaint.setTextSize(h * 0.022f);
+                canvas.drawText(formatTrackTime(displayedPositionMs)
+                        + " / " + formatTrackTime(displayedDurationMs),
+                        w * 0.978f, h * 0.312f, textPaint);
+            }
+        };
+        trackInfoOverlay.setClickable(false);
+        addView(trackInfoOverlay, new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         waveformOverlay = new View(context) {
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
