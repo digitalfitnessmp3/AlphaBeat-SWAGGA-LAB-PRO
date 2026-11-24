@@ -41,10 +41,14 @@ public final class SwaggaConsoleView extends FrameLayout {
     private View waveformOverlay;
     private boolean faderDragging = false;
     private boolean waveformDragging = false;
-    private String displayedTrackTitle = null;
+    private String displayedTrackTitle = "Nessun brano caricato";
     private int displayedDurationMs = 0;
     private int displayedPositionMs = 0;
     private View trackInfoOverlay;
+    private static final float WAVE_LEFT = .025f, WAVE_RIGHT = .975f;
+    private static final float WAVE_TOP = .326f, WAVE_BOTTOM = .482f;
+    private static final int WAVE_CYAN = Color.rgb(0, 234, 255);
+    private static final int WAVE_GREEN = Color.rgb(57, 255, 20);
 
     // La grafica PNG contiene un testo segnaposto: sovrascriviamo soltanto
     // il riquadro del titolo e del timer, senza alterare gli altri controlli.
@@ -99,6 +103,7 @@ public final class SwaggaConsoleView extends FrameLayout {
     public void setWaveformProgress(float progress) {
         waveformProgress = Math.max(0f, Math.min(1f, progress));
         if (waveformOverlay != null) waveformOverlay.invalidate();
+        if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
     }
 
     public SwaggaConsoleView(Context context, Actions actions) {
@@ -116,66 +121,54 @@ public final class SwaggaConsoleView extends FrameLayout {
                 LayoutParams.MATCH_PARENT
         ));
 
-        // Ricostruzione grafica QA del centro console:
-        // il vecchio PNG contiene una timeline statica che viene coperta
-        // e ridisegnata SOTTO la waveform, senza alterarne l'ampiezza.
-        // Coordinate normalizzate, indipendenti dalla risoluzione Android.
+        // QA: ricostruisce tutta la fascia centrale, senza lasciare
+        // visibili i bordi del PNG. Un solo perimetro, tre zone non sovrapposte.
         final View waveformFrameAndTimeline = new View(context) {
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                final float w = getWidth(), h = getHeight();
+                float w = getWidth(), h = getHeight();
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.rgb(3, 10, 13));
-                // Copre soltanto il vecchio pannello e la timeline inclusi nel PNG.
-                canvas.drawRoundRect(new RectF(w * .010f, h * .319f,
-                        w * .993f, h * .598f), h * .018f, h * .018f, paint);
-
-                paint.setColor(Color.rgb(4, 18, 21));
-                canvas.drawRoundRect(new RectF(w * .011f, h * .296f,
-                        w * .987f, h * .546f), h * .022f, h * .022f, paint);
+                paint.setColor(Color.rgb(4, 8, 11));
+                canvas.drawRect(0, h * .263f, w, h * .578f, paint);
+                RectF panel = new RectF(w * .010f, h * .268f, w * .990f, h * .570f);
+                paint.setColor(Color.rgb(3, 14, 17));
+                canvas.drawRoundRect(panel, h * .021f, h * .021f, paint);
                 paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(2f, h * .0035f));
-                paint.setColor(Color.rgb(0, 238, 238));
-                canvas.drawRoundRect(new RectF(w * .011f, h * .296f,
-                        w * .987f, h * .546f), h * .022f, h * .022f, paint);
+                paint.setStrokeWidth(Math.max(1.5f, h * .0025f));
+                paint.setColor(WAVE_CYAN);
+                canvas.drawRoundRect(panel, h * .021f, h * .021f, paint);
                 paint.setStyle(Paint.Style.FILL);
 
-                // La timeline viene ridisegnata sotto l'onda, con 32 conteggi.
-                paint.setColor(Color.rgb(4, 15, 19));
-                canvas.drawRoundRect(new RectF(w * .011f, h * .549f,
-                        w * .987f, h * .599f), h * .010f, h * .010f, paint);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(1f, h * .0016f));
-                paint.setColor(Color.rgb(0, 205, 210));
-                canvas.drawRoundRect(new RectF(w * .011f, h * .549f,
-                        w * .987f, h * .599f), h * .010f, h * .010f, paint);
-                paint.setStyle(Paint.Style.FILL);
                 paint.setTextAlign(Paint.Align.LEFT);
                 paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-                paint.setTextSize(h * .016f);
+                paint.setTextSize(h * .023f);
                 paint.setColor(Color.WHITE);
-                canvas.drawText("MULTITRACK TIMELINE", w * .022f, h * .566f, paint);
+                String label = "MULTITRACK TIMELINE";
+                canvas.drawText(label, w * .022f, h * .507f, paint);
+                float labelEnd = w * .022f + paint.measureText(label) + w * .016f;
                 paint.setColor(Color.rgb(139, 255, 30));
-                canvas.drawText("32 COUNTS", w * .190f, h * .566f, paint);
+                canvas.drawText("•  32 COUNTS", labelEnd, h * .507f, paint);
 
-                final float left = w * .025f, right = w * .976f;
-                final float cellWidth = (right - left) / 32f;
+                final float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
+                final float groupGap = w * .006f;
+                final float cellWidth = (right - left - 3f * groupGap) / 32f;
                 for (int i = 0; i < 32; i++) {
-                    float x = left + i * cellWidth;
+                    float x = left + i * cellWidth + (i / 8) * groupGap;
                     paint.setColor(Color.rgb(9, 31, 35));
-                    canvas.drawRect(x + 1f, h * .572f,
-                            x + cellWidth - 1f, h * .592f, paint);
-                    if ((i % 8) < 4) {
+                    canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(Math.max(1f, h * .001f));
+                    paint.setColor(Color.rgb(0, 110, 120));
+                    canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    if ((i % 8) < 4 && i < 24) {
                         paint.setColor(Color.rgb(0, 180, 38));
-                        canvas.drawRect(x + 1f, h * .586f,
-                                x + cellWidth - 1f, h * .593f, paint);
+                        canvas.drawRect(x + 2f, h * .543f, x + cellWidth - 2f, h * .556f, paint);
                     }
                     paint.setTextAlign(Paint.Align.CENTER);
-                    paint.setTextSize(h * .014f);
+                    paint.setTextSize(h * .019f);
                     paint.setColor(Color.WHITE);
-                    canvas.drawText(String.valueOf(i + 1),
-                            x + cellWidth / 2f, h * .585f, paint);
+                    canvas.drawText(String.valueOf(i + 1), x + cellWidth / 2f, h * .539f, paint);
                 }
             }
         };
@@ -183,40 +176,43 @@ public final class SwaggaConsoleView extends FrameLayout {
         addView(waveformFrameAndTimeline, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        // Il titolo e il timer sono entrambi allineati nella barra neon.
         trackInfoOverlay = new View(context) {
-            private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            private final Paint coverPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                if (displayedTrackTitle == null) return;
                 float w = getWidth(), h = getHeight();
-                coverPaint.setStyle(Paint.Style.FILL);
-                coverPaint.setColor(Color.rgb(3, 12, 15));
-                canvas.drawRect(w * .071f, h * .275f,
-                        w * .872f, h * .322f, coverPaint);
-                canvas.drawRect(w * .889f, h * .275f,
-                        w * .983f, h * .322f, coverPaint);
-
-                textPaint.setColor(Color.WHITE);
-                textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-                textPaint.setTextAlign(Paint.Align.LEFT);
-                textPaint.setTextSize(h * .023f);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                paint.setTextAlign(Paint.Align.LEFT);
+                paint.setColor(WAVE_CYAN);
+                paint.setTextSize(h * .045f);
+                canvas.drawText("♫", w * .023f, h * .307f, paint);
+                paint.setColor(Color.WHITE);
+                paint.setTextSize(h * .023f);
                 String shown = displayedTrackTitle;
-                float available = w * .785f;
-                if (textPaint.measureText(shown) > available) {
-                    while (!shown.isEmpty()
-                            && textPaint.measureText(shown + "…") > available)
+                float available = w * .78f;
+                if (paint.measureText(shown) > available) {
+                    while (!shown.isEmpty() && paint.measureText(shown + "…") > available)
                         shown = shown.substring(0, shown.length() - 1);
                     shown += "…";
                 }
-                canvas.drawText(shown, w * .078f, h * .303f, textPaint);
+                canvas.drawText(shown, w * .073f, h * .298f, paint);
+                paint.setTextAlign(Paint.Align.RIGHT);
+                paint.setTextSize(h * .020f);
+                canvas.drawText(formatTrackTime(displayedPositionMs) + " / "
+                        + formatTrackTime(displayedDurationMs), w * .975f, h * .298f, paint);
 
-                textPaint.setTextAlign(Paint.Align.RIGHT);
-                textPaint.setTextSize(h * .020f);
-                canvas.drawText(formatTrackTime(displayedPositionMs)
-                        + " / " + formatTrackTime(displayedDurationMs),
-                        w * .977f, h * .303f, textPaint);
+                float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
+                float y = h * .315f;
+                paint.setStrokeCap(Paint.Cap.ROUND);
+                paint.setStrokeWidth(Math.max(2f, h * .006f));
+                paint.setColor(Color.rgb(27, 62, 67));
+                canvas.drawLine(left, y, right, y, paint);
+                float progressX = left + (right - left) * waveformProgress;
+                paint.setColor(WAVE_GREEN);
+                if (waveformProgress > 0f) canvas.drawLine(left, y, progressX, y, paint);
+                paint.setColor(WAVE_CYAN);
+                canvas.drawCircle(progressX, y, h * .005f, paint);
+                paint.setStrokeCap(Paint.Cap.BUTT);
             }
         };
         trackInfoOverlay.setClickable(false);
@@ -225,54 +221,34 @@ public final class SwaggaConsoleView extends FrameLayout {
 
         waveformOverlay = new View(context) {
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-            @Override
-            protected void onDraw(Canvas canvas) {
+            @Override protected void onDraw(Canvas canvas) {
                 if (waveformPeaks.length == 0) return;
-
-                float width = getWidth();
-                float height = getHeight();
-                float middle = height / 2f;
-
+                float w = getWidth(), h = getHeight();
+                float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
+                float top = h * WAVE_TOP, bottom = h * WAVE_BOTTOM;
+                float width = right - left, height = bottom - top;
+                float middle = (top + bottom) / 2f;
+                canvas.save();
+                canvas.clipRect(left, top, right, bottom);
                 paint.setStrokeWidth(2f);
-
                 for (int i = 0; i < waveformPeaks.length; i++) {
-                    float x = (i + 0.5f) * width / waveformPeaks.length;
-                    float amplitude = Math.min(1f,
-                            Math.max(0f, waveformPeaks[i]));
-                    float extent = amplitude * middle * 0.88f;
-
-                    paint.setColor(
-                            x <= waveformProgress * width
-                                    ? Color.CYAN
-                                    : Color.rgb(57, 255, 20));
-
-                    canvas.drawLine(x, middle - extent,
-                            x, middle + extent, paint);
+                    float fraction = (i + 0.5f) / waveformPeaks.length;
+                    float x = left + fraction * width;
+                    float amplitude = Math.min(1f, Math.max(0f, waveformPeaks[i]));
+                    float extent = amplitude * height / 2f * .88f;
+                    paint.setColor(fraction <= waveformProgress ? WAVE_GREEN : WAVE_CYAN);
+                    canvas.drawLine(x, middle - extent, x, middle + extent, paint);
                 }
-
                 paint.setColor(Color.WHITE);
                 paint.setStrokeWidth(2f);
-                float cursor = waveformProgress * width;
-                canvas.drawLine(cursor, 0, cursor, height, paint);
+                float cursor = left + waveformProgress * width;
+                canvas.drawLine(cursor, top, cursor, bottom, paint);
+                canvas.restore();
             }
         };
-
-        LayoutParams waveformParams = new LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.MATCH_PARENT
-        );
-
-        waveformParams.leftMargin =
-                (int)(getResources().getDisplayMetrics().widthPixels * 0.01f);
-        waveformParams.rightMargin =
-                (int)(getResources().getDisplayMetrics().widthPixels * 0.04f);
-        waveformParams.topMargin =
-                (int)(getResources().getDisplayMetrics().heightPixels * 0.30f);
-        waveformParams.bottomMargin =
-                (int)(getResources().getDisplayMetrics().heightPixels * 0.46f);
-
-        addView(waveformOverlay, waveformParams);
+        waveformOverlay.setClickable(false);
+        addView(waveformOverlay, new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         // Livello grafico dei cinque fader.
         // Non intercetta i tocchi: i controlli restano
@@ -344,7 +320,7 @@ public final class SwaggaConsoleView extends FrameLayout {
                     if (e.getActionMasked() == MotionEvent.ACTION_MOVE
                             || e.getActionMasked() == MotionEvent.ACTION_UP) {
                         float progress = Math.max(0f,
-                                Math.min(1f, x));
+                                Math.min(1f, (x - WAVE_LEFT) / (WAVE_RIGHT - WAVE_LEFT)));
                         setWaveformProgress(progress);
                         actions.seek(progress);
                     }
@@ -356,10 +332,11 @@ public final class SwaggaConsoleView extends FrameLayout {
                 }
 
                 if (e.getActionMasked() == MotionEvent.ACTION_DOWN
-                        && y >= 0.30f && y <= 0.54f) {
+                        && y >= .308f && y <= WAVE_BOTTOM
+                        && x >= WAVE_LEFT && x <= WAVE_RIGHT) {
                     waveformDragging = true;
                     float progress = Math.max(0f,
-                            Math.min(1f, x));
+                            Math.min(1f, (x - WAVE_LEFT) / (WAVE_RIGHT - WAVE_LEFT)));
                     setWaveformProgress(progress);
                     actions.seek(progress);
                     return true;
