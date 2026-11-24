@@ -72,6 +72,62 @@ public final class MainActivity extends Activity {
     }
     private com.alphabeat.daw.ui.SwaggaConsoleView swaggaView;
     private int waveformGeneration = 0;
+    private int trackInfoGeneration = 0;
+    private String originalTrackTitle = "Brano originale";
+
+    // Le etichette presenti sullo sfondo sono statiche: metadati aggiornati in QA.
+    private void updateTrackInfo(Uri uri, String displayOverride) {
+        final int generation = ++trackInfoGeneration;
+        if (swaggaView == null) return;
+        swaggaView.setTrackInfo(
+                displayOverride == null ? "Caricamento brano…" : displayOverride, 0);
+        if (uri == null) return;
+        new Thread(() -> {
+            String title = displayOverride;
+            int durationMs = 0;
+            try {
+                if (title == null) {
+                    try (android.database.Cursor cursor =
+                                 getContentResolver().query(uri,
+                                         new String[]{android.provider.OpenableColumns.DISPLAY_NAME},
+                                         null, null, null)) {
+                        if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
+                            title = cursor.getString(0);
+                        }
+                    }
+                }
+                if (title == null || title.trim().isEmpty()) {
+                    title = uri.getLastPathSegment();
+                }
+                if (title == null || title.trim().isEmpty()) {
+                    title = "Brano audio";
+                }
+                android.media.MediaMetadataRetriever retriever =
+                        new android.media.MediaMetadataRetriever();
+                try {
+                    retriever.setDataSource(getApplicationContext(), uri);
+                    String duration = retriever.extractMetadata(
+                            android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+                    if (duration != null) durationMs = Integer.parseInt(duration);
+                } finally {
+                    retriever.release();
+                }
+            } catch (Exception error) {
+                android.util.Log.w("SWAGGA_TRACK_INFO",
+                        "Metadati del brano non disponibili", error);
+            }
+            final String visibleTitle = title == null || title.trim().isEmpty()
+                    ? "Brano audio" : title.trim();
+            final int visibleDuration = Math.max(0, durationMs);
+            runOnUiThread(() -> {
+                if (generation != trackInfoGeneration || swaggaView == null) return;
+                if (uri.equals(originalAudio) && displayOverride == null) {
+                    originalTrackTitle = visibleTitle;
+                }
+                swaggaView.setTrackInfo(visibleTitle, visibleDuration);
+            });
+        }, "SWAGGA-TrackInfo").start();
+    }
 
     private final android.os.Handler swaggaHandler =
             new android.os.Handler(android.os.Looper.getMainLooper());
@@ -84,8 +140,9 @@ public final class MainActivity extends Activity {
             try {
                 int duration = player.getDuration();
                 if (duration > 0) {
-                    swaggaView.setWaveformProgress(
-                            (float) player.getCurrentPosition() / duration);
+                    int position = player.getCurrentPosition();
+                    swaggaView.setWaveformProgress((float) position / duration);
+                    swaggaView.setTrackPosition(position, duration);
                 }
 
                 if (player.isPlaying()) {
@@ -515,10 +572,17 @@ public final class MainActivity extends Activity {
                 player = new android.media.MediaPlayer();
                 player.setDataSource(this, selectedAudio);
                 player.prepare();
+                if (swaggaView != null) {
+                    swaggaView.setTrackPosition(0, player.getDuration());
+                }
                 attachSwaggaEq();
                 applyEffectiveVolume();
                 player.setOnCompletionListener(mp -> {
                     mp.seekTo(0);
+                    if (swaggaView != null) {
+                        swaggaView.setWaveformProgress(0f);
+                        swaggaView.setTrackPosition(0, mp.getDuration());
+                    }
                 });
             }
 
@@ -794,6 +858,8 @@ public final class MainActivity extends Activity {
                     selectedAudio = Uri.fromFile(remix);
                     readyRemix = selectedAudio;
                     remixInProgress = false;
+                    updateTrackInfo(selectedAudio,
+                            originalTrackTitle + " - Fitness 32 " + targetBpm + " BPM");
 
                     // Il remix e' gia' elaborato al BPM richiesto.
                     // Evita di applicare un secondo cambio di velocita'.
@@ -874,6 +940,9 @@ public final class MainActivity extends Activity {
         stopAudio();
         activeChannel = channel - 1;
         selectedAudio = audio;
+        updateTrackInfo(selectedAudio,
+                channel == 2 ? originalTrackTitle + " - Fitness 32 "
+                        + selectedTargetBpm + " BPM" : null);
         applyEffectiveVolume();
 
         if (channel == 2) {
@@ -900,6 +969,7 @@ public final class MainActivity extends Activity {
             player.seekTo(position);
             if (swaggaView != null) {
                 swaggaView.setWaveformProgress(clamped);
+                swaggaView.setTrackPosition(position, duration);
             }
         } catch (IllegalStateException e) {
             android.util.Log.w("SWAGGA_SEEK",
@@ -909,7 +979,14 @@ public final class MainActivity extends Activity {
 
     private void stopAudio() {
         swaggaHandler.removeCallbacks(swaggaProgressUpdater);
-        if (swaggaView != null) swaggaView.setWaveformProgress(0f);
+        if (swaggaView != null) {
+            swaggaView.setWaveformProgress(0f);
+            // Conserva titolo e durata anche dopo STOP.
+            if (player != null) {
+                try { swaggaView.setTrackPosition(0, player.getDuration()); }
+                catch (IllegalStateException ignored) {}
+            }
+        }
 
         // Rilascia gli effetti audio prima del player.
         releaseSwaggaFx();
@@ -974,6 +1051,7 @@ public final class MainActivity extends Activity {
             stopAudio();
             activeChannel = channel - 1;
             selectedAudio = audio;
+            updateTrackInfo(audio, null);
 
             Toast.makeText(this,
                     "CH" + channel + " - BRANO CARICATO",
@@ -988,6 +1066,8 @@ public final class MainActivity extends Activity {
             selectedAudio = data.getData();
             originalAudio = selectedAudio;
             readyRemix = null;
+            originalTrackTitle = "Brano originale";
+            updateTrackInfo(selectedAudio, null);
             final Uri audio = selectedAudio;
             final int generation = ++waveformGeneration;
 
