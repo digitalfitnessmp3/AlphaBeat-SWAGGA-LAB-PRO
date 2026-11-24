@@ -116,83 +116,111 @@ public final class SwaggaConsoleView extends FrameLayout {
                 LayoutParams.MATCH_PARENT
         ));
 
-        // Overlay titolo/timer: il testo nella PNG e' statico.
+        // Ricostruzione grafica QA del centro console:
+        // il vecchio PNG contiene una timeline statica che viene coperta
+        // e ridisegnata SOTTO la waveform, senza alterarne l'ampiezza.
+        // Coordinate normalizzate, indipendenti dalla risoluzione Android.
+        final View waveformFrameAndTimeline = new View(context) {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                final float w = getWidth(), h = getHeight();
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(Color.rgb(3, 10, 13));
+                // Copre soltanto il vecchio pannello e la timeline inclusi nel PNG.
+                canvas.drawRoundRect(new RectF(w * .010f, h * .319f,
+                        w * .993f, h * .598f), h * .018f, h * .018f, paint);
+
+                paint.setColor(Color.rgb(4, 18, 21));
+                canvas.drawRoundRect(new RectF(w * .011f, h * .296f,
+                        w * .987f, h * .546f), h * .022f, h * .022f, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(2f, h * .0035f));
+                paint.setColor(Color.rgb(0, 238, 238));
+                canvas.drawRoundRect(new RectF(w * .011f, h * .296f,
+                        w * .987f, h * .546f), h * .022f, h * .022f, paint);
+                paint.setStyle(Paint.Style.FILL);
+
+                // La timeline viene ridisegnata sotto l'onda, con 32 conteggi.
+                paint.setColor(Color.rgb(4, 15, 19));
+                canvas.drawRoundRect(new RectF(w * .011f, h * .549f,
+                        w * .987f, h * .599f), h * .010f, h * .010f, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(1f, h * .0016f));
+                paint.setColor(Color.rgb(0, 205, 210));
+                canvas.drawRoundRect(new RectF(w * .011f, h * .549f,
+                        w * .987f, h * .599f), h * .010f, h * .010f, paint);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setTextAlign(Paint.Align.LEFT);
+                paint.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+                paint.setTextSize(h * .016f);
+                paint.setColor(Color.WHITE);
+                canvas.drawText("MULTITRACK TIMELINE", w * .022f, h * .566f, paint);
+                paint.setColor(Color.rgb(139, 255, 30));
+                canvas.drawText("32 COUNTS", w * .190f, h * .566f, paint);
+
+                final float left = w * .025f, right = w * .976f;
+                final float cellWidth = (right - left) / 32f;
+                for (int i = 0; i < 32; i++) {
+                    float x = left + i * cellWidth;
+                    paint.setColor(Color.rgb(9, 31, 35));
+                    canvas.drawRect(x + 1f, h * .572f,
+                            x + cellWidth - 1f, h * .592f, paint);
+                    if ((i % 8) < 4) {
+                        paint.setColor(Color.rgb(0, 180, 38));
+                        canvas.drawRect(x + 1f, h * .586f,
+                                x + cellWidth - 1f, h * .593f, paint);
+                    }
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    paint.setTextSize(h * .014f);
+                    paint.setColor(Color.WHITE);
+                    canvas.drawText(String.valueOf(i + 1),
+                            x + cellWidth / 2f, h * .585f, paint);
+                }
+            }
+        };
+        waveformFrameAndTimeline.setClickable(false);
+        addView(waveformFrameAndTimeline, new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+        // Il titolo e il timer sono entrambi allineati nella barra neon.
         trackInfoOverlay = new View(context) {
             private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
             private final Paint coverPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
             @Override protected void onDraw(Canvas canvas) {
                 super.onDraw(canvas);
                 if (displayedTrackTitle == null) return;
-
-                float w = getWidth();
-                float h = getHeight();
-                // Non coprire l'icona a sinistra, la barra o i bordi neon.
-                coverPaint.setColor(Color.rgb(3, 9, 12));
-                canvas.drawRect(w * 0.070f, h * 0.278f,
-                        w * 0.680f, h * 0.324f, coverPaint);
-                canvas.drawRect(w * 0.888f, h * 0.278f,
-                        w * 0.982f, h * 0.324f, coverPaint);
+                float w = getWidth(), h = getHeight();
+                coverPaint.setStyle(Paint.Style.FILL);
+                coverPaint.setColor(Color.rgb(3, 12, 15));
+                canvas.drawRect(w * .071f, h * .275f,
+                        w * .872f, h * .322f, coverPaint);
+                canvas.drawRect(w * .889f, h * .275f,
+                        w * .983f, h * .322f, coverPaint);
 
                 textPaint.setColor(Color.WHITE);
-                textPaint.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+                textPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
                 textPaint.setTextAlign(Paint.Align.LEFT);
-                textPaint.setTextSize(h * 0.026f);
-
-                String visibleTitle = displayedTrackTitle;
-                float availableWidth = w * 0.600f;
-                if (textPaint.measureText(visibleTitle) > availableWidth) {
-                    final String ellipsis = "…";
-                    while (!visibleTitle.isEmpty()
-                            && textPaint.measureText(visibleTitle + ellipsis) > availableWidth) {
-                        visibleTitle = visibleTitle.substring(0, visibleTitle.length() - 1);
-                    }
-                    visibleTitle += ellipsis;
+                textPaint.setTextSize(h * .023f);
+                String shown = displayedTrackTitle;
+                float available = w * .785f;
+                if (textPaint.measureText(shown) > available) {
+                    while (!shown.isEmpty()
+                            && textPaint.measureText(shown + "…") > available)
+                        shown = shown.substring(0, shown.length() - 1);
+                    shown += "…";
                 }
-                canvas.drawText(visibleTitle, w * 0.074f, h * 0.312f, textPaint);
+                canvas.drawText(shown, w * .078f, h * .303f, textPaint);
 
                 textPaint.setTextAlign(Paint.Align.RIGHT);
-                textPaint.setTextSize(h * 0.022f);
+                textPaint.setTextSize(h * .020f);
                 canvas.drawText(formatTrackTime(displayedPositionMs)
                         + " / " + formatTrackTime(displayedDurationMs),
-                        w * 0.978f, h * 0.312f, textPaint);
+                        w * .977f, h * .303f, textPaint);
             }
         };
         trackInfoOverlay.setClickable(false);
         addView(trackInfoOverlay, new LayoutParams(
-                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-
-        // Cornice QA ampliata: contiene l'intera waveform senza cambiarne
-        // altezza, ampiezza, posizione, colori o progressione.
-        // Deve essere disegnata prima della waveform per lasciare i picchi
-        // sempre in primo piano. Non intercetta il touch.
-        final View waveformFrame = new View(context) {
-            private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-            @Override protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                final float w = getWidth();
-                final float h = getHeight();
-
-                // Il viewport attuale della waveform va da 30% a 54%
-                // dell'altezza (center = 42%). La cornice aggiunge
-                // una tolleranza di 0.8% su entrambi i lati.
-                final RectF frame = new RectF(
-                        w * 0.011f, h * 0.292f,
-                        w * 0.960f, h * 0.548f);
-
-                border.setStyle(Paint.Style.STROKE);
-                border.setStrokeWidth(Math.max(1.5f, h * 0.0024f));
-                border.setColor(Color.rgb(0, 220, 224));
-                border.setShadowLayer(h * 0.007f, 0f, 0f,
-                        Color.argb(180, 0, 255, 245));
-                canvas.drawRoundRect(frame, h * 0.018f, h * 0.018f, border);
-                border.clearShadowLayer();
-            }
-        };
-        waveformFrame.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        waveformFrame.setClickable(false);
-        addView(waveformFrame, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         waveformOverlay = new View(context) {
