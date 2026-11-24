@@ -161,7 +161,7 @@ public final class SwaggaConsoleView extends FrameLayout {
                     paint.setColor(Color.rgb(0, 110, 120));
                     canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
                     paint.setStyle(Paint.Style.FILL);
-                    if ((i % 8) < 4 && i < 24) {
+                    if ((i % 8) < 4) {
                         paint.setColor(Color.rgb(0, 180, 38));
                         canvas.drawRect(x + 2f, h * .543f, x + cellWidth - 2f, h * .556f, paint);
                     }
