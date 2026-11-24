@@ -10,8 +10,8 @@ android {
         applicationId = "com.alphabeat.daw.swaggalab.qa224"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "2.2.6-QA-TIMELINE"
+        versionCode = 18
+        versionName = "2.2.7-QA-32-LIVE"
     }
 
 

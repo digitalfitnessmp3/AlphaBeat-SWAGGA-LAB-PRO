@@ -45,6 +45,23 @@ public final class SwaggaConsoleView extends FrameLayout {
     private int displayedDurationMs = 0;
     private int displayedPositionMs = 0;
     private View trackInfoOverlay;
+    private View timelineOverlay;
+    private int timelineBpm = 0;
+    private int timelineCount = 0;
+
+    public void setTimelineBpm(int bpm) {
+        timelineBpm = bpm;
+        timelineCount = BeatGrid32.count(0, bpm);
+        if (timelineOverlay != null) timelineOverlay.invalidate();
+    }
+
+    private void updateTimelineCount() {
+        int next = BeatGrid32.count(displayedPositionMs, timelineBpm);
+        if (next != timelineCount) {
+            timelineCount = next;
+            if (timelineOverlay != null) timelineOverlay.invalidate();
+        }
+    }
     private static final float WAVE_LEFT = .025f, WAVE_RIGHT = .975f;
     private static final float WAVE_TOP = .326f, WAVE_BOTTOM = .482f;
     private static final int WAVE_CYAN = Color.rgb(0, 234, 255);
@@ -55,13 +72,15 @@ public final class SwaggaConsoleView extends FrameLayout {
     public void setTrackInfo(String title, int durationMs) {
         displayedTrackTitle = title == null ? "Brano audio" : title.trim();
         displayedDurationMs = Math.max(0, durationMs);
-        displayedPositionMs = 0;
+        displayedPositionMs = Math.min(displayedPositionMs, displayedDurationMs);
+        updateTimelineCount();
         if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
     }
 
     public void setTrackPosition(int positionMs, int durationMs) {
         displayedDurationMs = Math.max(0, durationMs);
         displayedPositionMs = Math.max(0, Math.min(positionMs, displayedDurationMs));
+        updateTimelineCount();
         if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
     }
 
@@ -147,31 +166,33 @@ public final class SwaggaConsoleView extends FrameLayout {
                 canvas.drawText(label, w * .022f, h * .507f, paint);
                 float labelEnd = w * .022f + paint.measureText(label) + w * .016f;
                 paint.setColor(Color.rgb(139, 255, 30));
-                canvas.drawText("•  32 COUNTS", labelEnd, h * .507f, paint);
+                canvas.drawText(timelineBpm > 0 ? "•  32 LIVE" : "•  32 COUNTS", labelEnd, h * .507f, paint);
 
                 final float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
                 final float groupGap = w * .006f;
                 final float cellWidth = (right - left - 3f * groupGap) / 32f;
                 for (int i = 0; i < 32; i++) {
                     float x = left + i * cellWidth + (i / 8) * groupGap;
-                    paint.setColor(Color.rgb(9, 31, 35));
+                    boolean current = timelineCount == i + 1;
+                    paint.setColor(current ? WAVE_GREEN : Color.rgb(9, 31, 35));
                     canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(Math.max(1f, h * .001f));
                     paint.setColor(Color.rgb(0, 110, 120));
                     canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
                     paint.setStyle(Paint.Style.FILL);
-                    if ((i % 8) < 4) {
+                    if (!current && (i % 8) < 4) {
                         paint.setColor(Color.rgb(0, 180, 38));
                         canvas.drawRect(x + 2f, h * .543f, x + cellWidth - 2f, h * .556f, paint);
                     }
                     paint.setTextAlign(Paint.Align.CENTER);
                     paint.setTextSize(h * .019f);
-                    paint.setColor(Color.WHITE);
+                    paint.setColor(current ? Color.rgb(4, 8, 11) : Color.WHITE);
                     canvas.drawText(String.valueOf(i + 1), x + cellWidth / 2f, h * .539f, paint);
                 }
             }
         };
+        timelineOverlay = waveformFrameAndTimeline;
         waveformFrameAndTimeline.setClickable(false);
         addView(waveformFrameAndTimeline, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));

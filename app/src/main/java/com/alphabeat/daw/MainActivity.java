@@ -79,6 +79,8 @@ public final class MainActivity extends Activity {
     private void updateTrackInfo(Uri uri, String displayOverride) {
         final int generation = ++trackInfoGeneration;
         if (swaggaView == null) return;
+        swaggaView.setTimelineBpm(readyRemixV6 && uri != null && uri.equals(readyRemix) ? 140 : 0);
+        swaggaView.setTrackPosition(0, 0);
         swaggaView.setTrackInfo(
                 displayOverride == null ? "Caricamento brano…" : displayOverride, 0);
         if (uri == null) return;
@@ -146,7 +148,7 @@ public final class MainActivity extends Activity {
                 }
 
                 if (player.isPlaying()) {
-                    swaggaHandler.postDelayed(this, 80);
+                    swaggaHandler.postDelayed(this, 40);
                 }
             } catch (IllegalStateException ignored) {
             }
@@ -577,6 +579,9 @@ public final class MainActivity extends Activity {
                 }
                 attachSwaggaEq();
                 applyEffectiveVolume();
+                player.setOnSeekCompleteListener(mp -> {
+                    if (player == mp) updateSwaggaProgress();
+                });
                 player.setOnCompletionListener(mp -> {
                     mp.seekTo(0);
                     if (swaggaView != null) {
@@ -820,6 +825,7 @@ public final class MainActivity extends Activity {
 
     private static final int SAVE_REMIX_MP3 = 1002;
     private Uri readyRemix;
+    private boolean readyRemixV6 = false;
 
     private void exportFitnessMp3() {
         if (remixInProgress) {
@@ -922,6 +928,7 @@ public final class MainActivity extends Activity {
                     stopAudio();
                     selectedAudio = Uri.fromFile(remix);
                     readyRemix = selectedAudio;
+                    readyRemixV6 = batida;
                     remixInProgress = false;
                     updateTrackInfo(selectedAudio,
                             originalTrackTitle + " - " + modeLabel + " " + targetBpm + " BPM");
@@ -994,7 +1001,7 @@ public final class MainActivity extends Activity {
     private void pauseAudio() {
         if (player != null && player.isPlaying()) {
             player.pause();
-            swaggaHandler.removeCallbacks(swaggaProgressUpdater);
+            updateSwaggaProgress();
         }
     }
 
@@ -1147,6 +1154,7 @@ public final class MainActivity extends Activity {
             selectedAudio = data.getData();
             originalAudio = selectedAudio;
             readyRemix = null;
+            readyRemixV6 = false;
             originalTrackTitle = "Brano originale";
             updateTrackInfo(selectedAudio, null);
             final Uri audio = selectedAudio;
