@@ -174,20 +174,26 @@ public final class SwaggaConsoleView extends FrameLayout {
                 for (int i = 0; i < 32; i++) {
                     float x = left + i * cellWidth + (i / 8) * groupGap;
                     boolean current = timelineCount == i + 1;
-                    paint.setColor(current ? WAVE_GREEN : Color.rgb(9, 31, 35));
+                    paint.setColor(current ? Color.rgb(10, 65, 70) : Color.rgb(9, 31, 35));
                     canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(Math.max(1f, h * .001f));
-                    paint.setColor(Color.rgb(0, 110, 120));
+                    paint.setColor(current ? WAVE_CYAN : Color.rgb(0, 110, 120));
                     canvas.drawRect(x + 1f, h * .518f, x + cellWidth - 1f, h * .558f, paint);
                     paint.setStyle(Paint.Style.FILL);
-                    if (!current && (i % 8) < 4) {
-                        paint.setColor(Color.rgb(0, 180, 38));
+                    int marker = BeatGrid32.markerState(timelineCount, i + 1);
+                    // Live mode lights each reached count, and brightens the entire
+                    // group on its eighth count. Static mode retains the old pattern.
+                    if (timelineBpm > 0 || (i % 8) < 4) {
+                        paint.setColor(timelineBpm <= 0 ? Color.rgb(0, 180, 38)
+                                : marker == 2 ? WAVE_GREEN
+                                : marker == 1 ? Color.rgb(0, 180, 38)
+                                : Color.rgb(20, 49, 52));
                         canvas.drawRect(x + 2f, h * .543f, x + cellWidth - 2f, h * .556f, paint);
                     }
                     paint.setTextAlign(Paint.Align.CENTER);
                     paint.setTextSize(h * .019f);
-                    paint.setColor(current ? Color.rgb(4, 8, 11) : Color.WHITE);
+                    paint.setColor(current ? WAVE_CYAN : Color.WHITE);
                     canvas.drawText(String.valueOf(i + 1), x + cellWidth / 2f, h * .539f, paint);
                 }
             }
