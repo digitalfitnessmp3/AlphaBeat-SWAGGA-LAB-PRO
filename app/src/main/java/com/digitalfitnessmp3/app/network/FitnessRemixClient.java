@@ -101,8 +101,11 @@ public final class FitnessRemixClient {
         String boundary = "DFMP3-" + UUID.randomUUID();
         HttpURLConnection connection = null;
         File output = null;
+        File requestBody = null;
+        String phase = "Preparazione upload";
 
         try {
+            requestBody = File.createTempFile("dfmp3-upload-", ".multipart", context.getCacheDir());
             connection = (HttpURLConnection)
                     new URL(batida ? ENDPOINT.replace("/remix", "/batida-extreme") : ENDPOINT).openConnection();
 
@@ -111,12 +114,11 @@ public final class FitnessRemixClient {
             connection.setReadTimeout(batida ? 260000 : 180000);
             connection.setDoOutput(true);
 
-            connection.setChunkedStreamingMode(65536);
             connection.setRequestProperty(
                     "Content-Type",
                     "multipart/form-data; boundary=" + boundary);
 
-            try (OutputStream out = connection.getOutputStream()) {
+            try (OutputStream out = new BufferedOutputStream(new FileOutputStream(requestBody))) {
                 String header = "--" + boundary + "\r\n"
                         + "Content-Disposition: form-data; "
                         + "name=\"file\"; filename=\"audio" + extension + "\"\r\n"
@@ -165,6 +167,15 @@ public final class FitnessRemixClient {
                         .getBytes(StandardCharsets.UTF_8));
             }
 
+            phase = "Invio audio";
+            connection.setFixedLengthStreamingMode(requestBody.length());
+            try (InputStream in = new FileInputStream(requestBody);
+                 OutputStream out = connection.getOutputStream()) {
+                byte[] buffer = new byte[65536];
+                int n;
+                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+            }
+            phase = "Risposta server";
             int status = connection.getResponseCode();
 
             if (status != 200) {
@@ -212,6 +223,7 @@ public final class FitnessRemixClient {
                 throw new IOException("Risposta non MP3");
             }
 
+            phase = "Download MP3";
             output = File.createTempFile(
                     "dfmp3-remix-", ".mp3", context.getCacheDir());
 
@@ -233,9 +245,13 @@ public final class FitnessRemixClient {
 
         } catch (IOException | RuntimeException error) {
             if (output != null) output.delete();
+            if (error instanceof IOException && !(error.getMessage() != null && error.getMessage().startsWith("HTTP "))) {
+                throw new IOException(phase + ": " + error.getMessage(), error);
+            }
             throw error;
         } finally {
             if (connection != null) connection.disconnect();
+            if (requestBody != null) requestBody.delete();
         }
     }
 }
