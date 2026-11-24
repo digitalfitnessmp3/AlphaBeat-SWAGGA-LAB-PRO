@@ -1,8 +1,8 @@
-name: QA compile SWAGGA 2.2.3 combined (no Play publishing)
+name: QA SWAGGA 2.2.3 side-by-side APK (not Play)
 
 on:
   push:
-    branches: [qa/swagga-2.2.3-combined-20261124]
+    branches: [qa/swagga-2.2.3-side-by-side-20261124]
     paths:
       - ".github/workflows/qa-reference-apk.yml"
       - "app/**"
@@ -41,10 +41,13 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Compile combined QA 2.2.3 debug
+      - name: Compile side-by-side QA 2.2.3 debug
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Check separate QA package identity
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='com.alphabeat.daw.swaggalab.qa223'"
       - name: Record QA APK fingerprint
         run: |
           sha256sum app/build/outputs/apk/debug/app-debug.apk
@@ -52,7 +55,7 @@ jobs:
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.2.3-combined-DEBUG-NOT-FOR-INSTALL
+          name: swagga-2.2.3-SIDE-BY-SIDE-DEBUG
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
