@@ -85,7 +85,9 @@ public final class FitnessRemixClient {
 
         if (targetBpm != 0 && targetBpm != 128
                 && targetBpm != 140 && targetBpm != 150
-                && targetBpm != 160 && targetBpm != 180) {
+                && targetBpm != 160 && targetBpm != 180
+                && targetBpm != 200 && targetBpm != 220
+                && targetBpm != 240 && targetBpm != 260) {
             throw new IOException("Target BPM non supportato");
         }
 
