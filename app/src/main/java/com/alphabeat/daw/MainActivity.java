@@ -1219,6 +1219,19 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void openSmartCast() {
+        // System mirroring, not a separate Cast receiver or audio stream.
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_CAST_SETTINGS));
+        } catch (android.content.ActivityNotFoundException | SecurityException e) {
+            new android.app.AlertDialog.Builder(this)
+                .setTitle("SMART CAST")
+                .setMessage("Apri il pannello rapido Android e cerca Trasmetti schermo / Cast. Seleziona un dispositivo compatibile sulla stessa rete Wi-Fi, poi torna in SWAGGA LAB.")
+                .setPositiveButton("OK", null)
+                .show();
+        }
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -1262,6 +1275,7 @@ public final class MainActivity extends Activity {
         swaggaView = new com.alphabeat.daw.ui.SwaggaConsoleView(
                 this,
                 new com.alphabeat.daw.ui.SwaggaConsoleView.Actions() {
+                    public void openCast() { openSmartCast(); }
                     public void openSetup() {
                         showSwaggaSetup();
                     }

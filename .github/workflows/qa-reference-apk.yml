@@ -1,4 +1,4 @@
-name: QA SWAGGA 2.3.0 V6 Club APK (not Play)
+name: QA SWAGGA 2.3.1 V6 Club APK (not Play)
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/beat-grid-test"
           javac -d "$RUNNER_TEMP/beat-grid-test" app/src/main/java/com/alphabeat/daw/ui/BeatGrid32.java qa/BeatGrid32Test.java
           java -cp "$RUNNER_TEMP/beat-grid-test" BeatGrid32Test
-      - name: Compile side-by-side QA 2.3.0 debug
+      - name: Compile side-by-side QA 2.3.1 debug
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
@@ -60,7 +60,7 @@ jobs:
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.3.0-QA-LIVE-PHASES-DEBUG
+          name: swagga-2.3.1-QA-SMART-CAST-DEBUG
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7

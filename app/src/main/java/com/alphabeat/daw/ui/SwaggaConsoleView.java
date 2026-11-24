@@ -20,6 +20,7 @@ public final class SwaggaConsoleView extends FrameLayout {
         void selectBpm();
         void masterVolume(float value);
         void openSetup();
+        void openCast();
         void openEdit();
         void channel1();
         void channel2();
@@ -60,6 +61,16 @@ public final class SwaggaConsoleView extends FrameLayout {
         if (timelineOverlay != null) timelineOverlay.invalidate();
     }
     private View timelineOverlay;
+    private int cutoutSafeLeft;
+    @Override public WindowInsets onApplyWindowInsets(WindowInsets insets) {
+        int left = 0;
+        if (android.os.Build.VERSION.SDK_INT >= 28 && insets.getDisplayCutout() != null) {
+            left = insets.getDisplayCutout().getSafeInsetLeft();
+        }
+        cutoutSafeLeft = left;
+        if (timelineOverlay != null) timelineOverlay.invalidate();
+        return super.onApplyWindowInsets(insets);
+    }
     private int timelineBpm = 0;
     private int timelineCount = 0;
 
@@ -179,8 +190,10 @@ public final class SwaggaConsoleView extends FrameLayout {
                 paint.setTextSize(h * .023f);
                 paint.setColor(Color.WHITE);
                 String label = remixPhase == null ? "MULTITRACK TIMELINE" : remixPhase;
-                canvas.drawText(label, w * .022f, h * .507f, paint);
-                float labelEnd = w * .022f + paint.measureText(label) + w * .016f;
+                // Above count 2, or farther right when the camera cutout requires it.
+                float labelX = Math.max(w * .055f, cutoutSafeLeft + w * .010f);
+                canvas.drawText(label, labelX, h * .507f, paint);
+                float labelEnd = labelX + paint.measureText(label) + w * .016f;
                 paint.setColor(Color.rgb(139, 255, 30));
                 if (remixPhase == null) canvas.drawText(timelineBpm > 0 ? "•  SMART WAVE 32" : "•  32 COUNTS", labelEnd, h * .507f, paint);
                 else canvas.drawText("•  IN CORSO", labelEnd, h * .507f, paint);
@@ -200,10 +213,9 @@ public final class SwaggaConsoleView extends FrameLayout {
                     paint.setStyle(Paint.Style.FILL);
                     int marker = BeatGrid32.markerState(timelineCount, i + 1);
                     // Live mode lights each reached count, and brightens the entire
-                    // group on its eighth count. Static mode retains the old pattern.
-                    if (timelineBpm > 0 || (i % 8) < 4) {
-                        paint.setColor(timelineBpm <= 0 ? Color.rgb(0, 180, 38)
-                                : marker == 2 ? WAVE_GREEN
+                    // group on its eighth count. No decorative bars before V6.
+                    if (timelineBpm > 0) {
+                        paint.setColor(marker == 2 ? WAVE_GREEN
                                 : marker == 1 ? Color.rgb(0, 180, 38)
                                 : Color.rgb(20, 49, 52));
                         canvas.drawRect(x + 2f, h * .543f, x + cellWidth - 2f, h * .556f, paint);
@@ -583,5 +595,51 @@ public final class SwaggaConsoleView extends FrameLayout {
             bpmControl.setLayoutParams(params);
         });
 
+        // Real clickable control, in the header gap between DAW PRO and BPM.
+        final View cast = new View(context) {
+            private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            @Override protected void onDraw(Canvas canvas) {
+                float cw = getWidth(), ch = getHeight();
+                float unit = Math.min(cw, ch) / 24f;
+                canvas.save();
+                canvas.translate(cw / 2f, ch / 2f);
+                canvas.scale(unit, unit);
+                p.setColor(Color.rgb(3, 14, 17));
+                p.setStyle(Paint.Style.FILL);
+                canvas.drawRoundRect(new RectF(-11,-11,11,11),3,3,p);
+                p.setColor(WAVE_CYAN);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(1.5f);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setStrokeJoin(Paint.Join.ROUND);
+                Path screen = new Path();
+                screen.moveTo(-8,-2); screen.lineTo(-8,-7); screen.lineTo(8,-7);
+                screen.lineTo(8,5); screen.lineTo(1,5);
+                canvas.drawPath(screen,p);
+                canvas.drawArc(new RectF(-15,-2,-1,12),270,90,false,p);
+                canvas.drawArc(new RectF(-12,1,-4,9),270,90,false,p);
+                p.setStyle(Paint.Style.FILL);
+                canvas.drawCircle(-8,5,1.2f,p);
+                canvas.restore();
+            }
+            @Override public CharSequence getAccessibilityClassName() {
+                return android.widget.Button.class.getName();
+            }
+        };
+        cast.setContentDescription("SMART CAST - Trasmetti schermo");
+        cast.setTooltipText("SMART CAST");
+        cast.setFocusable(true);
+        cast.setOnClickListener(view -> actions.openCast());
+        addView(cast, new LayoutParams(1,1));
+        addOnLayoutChangeListener((view,l,t,r,b,ol,ot,orr,ob) -> {
+            if (r-l == orr-ol && b-t == ob-ot) return;
+            int width = r-l, height = b-t;
+            LayoutParams params = new LayoutParams(Math.round(width * .049f),
+                    Math.round(height * .092f));
+            params.leftMargin = Math.round(width * .612f);
+            params.topMargin = Math.round(height * .005f);
+            cast.setLayoutParams(params);
+        });
+        requestApplyInsets();
     }
 }
