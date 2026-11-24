@@ -635,7 +635,58 @@ public final class MainActivity extends Activity {
 
 
     private void showRemixBpmDialog() {
-        showRemixBpmDialog(false, selectedTargetBpm);
+        if (remixInProgress || selectedAudio == null) {
+            showRemixBpmDialog(false, selectedTargetBpm);
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("ALPHABEAT REMIX ENGINE")
+                .setItems(new String[]{
+                    "FITNESS 32 CLASSIC  |  128–260 BPM",
+                    "BATIDA EXTREME  |  140 BPM  (QA)"
+                }, (dialog, which) -> {
+                    if (which == 0) showRemixBpmDialog(false, selectedTargetBpm);
+                    else showBatidaRemixDialog();
+                })
+                .setNegativeButton("ANNULLA", null)
+                .show();
+    }
+
+    private void showBatidaRemixDialog() {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int)(20 * getResources().getDisplayMetrics().density);
+        layout.setPadding(pad, pad, pad, pad);
+        android.widget.TextView info = new android.widget.TextView(this);
+        info.setText("COMMERCIAL DANCE • WORKOUT\n140 BPM fissi • Base 32 count\nVersione sperimentale: usa il brano originale. Lascia vuoto per analisi automatica.");
+        layout.addView(info);
+        android.widget.EditText source = new android.widget.EditText(this);
+        source.setHint("BPM musicali originali (70–180)");
+        source.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        layout.addView(source);
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("BATIDA EXTREME 140 — QA")
+                .setView(layout)
+                .setNegativeButton("ANNULLA", null)
+                .setPositiveButton("CREA REMIX", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    String input = source.getText().toString().trim();
+                    int bpm = 0;
+                    try {
+                        if (!input.isEmpty()) {
+                            bpm = Integer.parseInt(input);
+                            if (bpm < 70 || bpm > 180) throw new NumberFormatException();
+                        }
+                    } catch (NumberFormatException e) {
+                        source.setError("Inserisci BPM musicali tra 70 e 180");
+                        return;
+                    }
+                    dialog.dismiss();
+                    createFitnessRemix(bpm, 140, true);
+                }));
+        dialog.show();
     }
 
     private void showRemixBpmDialog(
@@ -832,7 +883,12 @@ public final class MainActivity extends Activity {
     }
 
     private void createFitnessRemix(int sourceBpm, int targetBpm) {
-        if (!isSupportedFitnessTarget(targetBpm)) {
+        createFitnessRemix(sourceBpm, targetBpm, false);
+    }
+
+    private void createFitnessRemix(int sourceBpm, int targetBpm, boolean batida) {
+        final String modeLabel = batida ? "Batida Extreme" : "Fitness 32";
+        if ((batida && targetBpm != 140) || !isSupportedFitnessTarget(targetBpm)) {
             Toast.makeText(this, "Fitness 32: scegli un BPM da 128 a 260 tra i valori disponibili", Toast.LENGTH_LONG).show();
             return;
         }
@@ -853,14 +909,14 @@ public final class MainActivity extends Activity {
 
         remixInProgress = true;
 
-        Toast.makeText(this, "Fitness 32: elaborazione avviata",
+        Toast.makeText(this, modeLabel + ": elaborazione avviata",
                 Toast.LENGTH_LONG).show();
 
         new Thread(() -> {
             try {
                 java.io.File remix =
                     com.digitalfitnessmp3.app.network.FitnessRemixClient
-                        .createRemix(getApplicationContext(), source, sourceBpm, targetBpm);
+                        .createRemix(getApplicationContext(), source, sourceBpm, targetBpm, batida);
 
                 runOnUiThread(() -> {
                     stopAudio();
@@ -868,7 +924,7 @@ public final class MainActivity extends Activity {
                     readyRemix = selectedAudio;
                     remixInProgress = false;
                     updateTrackInfo(selectedAudio,
-                            originalTrackTitle + " - Fitness 32 " + targetBpm + " BPM");
+                            originalTrackTitle + " - " + modeLabel + " " + targetBpm + " BPM");
 
                     // Il remix e' gia' elaborato al BPM richiesto.
                     // Evita di applicare un secondo cambio di velocita'.
@@ -897,7 +953,16 @@ public final class MainActivity extends Activity {
                                 || error.contains("Candidati BPM concorrenti")
                                 || error.contains("mai inferiori agli originali"));
 
-                    if (error.contains("HTTP 422") && error.contains("Target BPM non supportato")) {
+                    if (batida) {
+                        new android.app.AlertDialog.Builder(this)
+                                .setTitle("Batida Extreme QA")
+                                .setMessage(error.contains("HTTP 503") || error.contains("HTTP 404")
+                                    ? "Motore Batida non ancora attivo sul server. Il brano originale resta intatto."
+                                    : "Remix non riuscito: " + error)
+                                .setNegativeButton("CHIUDI", null)
+                                .setPositiveButton("RIPROVA", (dialog, which) -> showBatidaRemixDialog())
+                                .show();
+                    } else if (error.contains("HTTP 422") && error.contains("Target BPM non supportato")) {
                         new android.app.AlertDialog.Builder(this)
                                 .setTitle("BPM remix non accettato")
                                 .setMessage("Il server ha rifiutato " + targetBpm + " BPM. Il servizio deve essere compatibile con questa velocità. Nessun remix è stato creato.")
@@ -923,7 +988,7 @@ public final class MainActivity extends Activity {
                     }
                 });
             }
-        }, "SWAGGA-Fitness32").start();
+        }, batida ? "SWAGGA-BatidaExtreme" : "SWAGGA-Fitness32").start();
     }
 
     private void pauseAudio() {
