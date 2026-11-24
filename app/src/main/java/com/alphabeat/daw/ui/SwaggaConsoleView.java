@@ -162,6 +162,39 @@ public final class SwaggaConsoleView extends FrameLayout {
         addView(trackInfoOverlay, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
+        // Cornice QA ampliata: contiene l'intera waveform senza cambiarne
+        // altezza, ampiezza, posizione, colori o progressione.
+        // Deve essere disegnata prima della waveform per lasciare i picchi
+        // sempre in primo piano. Non intercetta il touch.
+        final View waveformFrame = new View(context) {
+            private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                final float w = getWidth();
+                final float h = getHeight();
+
+                // Il viewport attuale della waveform va da 30% a 54%
+                // dell'altezza (center = 42%). La cornice aggiunge
+                // una tolleranza di 0.8% su entrambi i lati.
+                final RectF frame = new RectF(
+                        w * 0.011f, h * 0.292f,
+                        w * 0.960f, h * 0.548f);
+
+                border.setStyle(Paint.Style.STROKE);
+                border.setStrokeWidth(Math.max(1.5f, h * 0.0024f));
+                border.setColor(Color.rgb(0, 220, 224));
+                border.setShadowLayer(h * 0.007f, 0f, 0f,
+                        Color.argb(180, 0, 255, 245));
+                canvas.drawRoundRect(frame, h * 0.018f, h * 0.018f, border);
+                border.clearShadowLayer();
+            }
+        };
+        waveformFrame.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        waveformFrame.setClickable(false);
+        addView(waveformFrame, new LayoutParams(
+                LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
         waveformOverlay = new View(context) {
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
