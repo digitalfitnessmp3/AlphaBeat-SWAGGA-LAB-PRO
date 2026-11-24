@@ -23,6 +23,13 @@ public final class FitnessRemixClient {
     public static File createRemix(
             Context context, Uri source, int sourceBpm, int targetBpm)
             throws IOException {
+        return createRemix(context, source, sourceBpm, targetBpm, false);
+    }
+
+    public static File createRemix(Context context, Uri source, int sourceBpm, int targetBpm, boolean batida) throws IOException {
+        if (batida && (targetBpm != 140 || sourceBpm > 180)) {
+            throw new IOException("Batida Extreme: target 140 BPM, sorgente 70-180 BPM musicali");
+        }
         if (sourceBpm != 0 && (sourceBpm < 70 || sourceBpm > 200)) {
             throw new IOException("BPM originali fuori intervallo");
         }
@@ -97,11 +104,11 @@ public final class FitnessRemixClient {
 
         try {
             connection = (HttpURLConnection)
-                    new URL(ENDPOINT).openConnection();
+                    new URL(batida ? ENDPOINT.replace("/remix", "/batida-extreme") : ENDPOINT).openConnection();
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15000);
-            connection.setReadTimeout(180000);
+            connection.setReadTimeout(batida ? 260000 : 180000);
             connection.setDoOutput(true);
 
             connection.setChunkedStreamingMode(65536);
@@ -180,6 +187,9 @@ public final class FitnessRemixClient {
                         "HTTP " + status + ": " + detail);
             }
 
+            if (batida && !"batida-extreme-qa".equals(connection.getHeaderField("X-Remix-Mode"))) {
+                throw new IOException("Risposta Batida non riconosciuta");
+            }
             String returnedBpm = connection.getHeaderField("X-Target-BPM");
             if (returnedBpm == null) {
                 throw new IOException("Risposta Fitness 32 senza BPM verificabili");
