@@ -1,8 +1,8 @@
-name: QA compile reconstructed 2.2.2 (no Play publishing)
+name: QA compile SWAGGA 2.2.3 combined (no Play publishing)
 
 on:
   push:
-    branches: [qa/swagga-2.2.2-play-20261123]
+    branches: [qa/swagga-2.2.3-combined-20261124]
     paths:
       - ".github/workflows/qa-reference-apk.yml"
       - "app/**"
@@ -41,7 +41,7 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Compile reconstructed QA 2.2.2 debug
+      - name: Compile combined QA 2.2.3 debug
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
@@ -52,7 +52,7 @@ jobs:
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.2.2-reconstructed-DEBUG-NOT-FOR-INSTALL
+          name: swagga-2.2.3-combined-DEBUG-NOT-FOR-INSTALL
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
