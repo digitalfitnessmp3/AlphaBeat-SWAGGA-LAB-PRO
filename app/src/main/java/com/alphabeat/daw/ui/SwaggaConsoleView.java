@@ -41,6 +41,14 @@ public final class SwaggaConsoleView extends FrameLayout {
     private View waveformOverlay;
     private boolean faderDragging = false;
     private boolean waveformDragging = false;
+    private boolean draggingWindow;
+    private double dragStart;
+    private double windowSpan() { return timelineBpm > 0 ? 1920000.0 / timelineBpm : 0; }
+    private double windowStart() { return timelineBpm > 0 ? (displayedPositionMs * (long) timelineBpm / 60000L / 32L) * windowSpan() : 0; }
+    private float seekProgress(float x) {
+        float f = Math.max(0f, Math.min(1f,(x-WAVE_LEFT)/(WAVE_RIGHT-WAVE_LEFT)));
+        return draggingWindow && displayedDurationMs > 0 ? (float)Math.max(0,Math.min(1,(dragStart+f*windowSpan())/displayedDurationMs)) : f;
+    }
     private String displayedTrackTitle = "Nessun brano caricato";
     private int displayedDurationMs = 0;
     private int displayedPositionMs = 0;
@@ -53,6 +61,7 @@ public final class SwaggaConsoleView extends FrameLayout {
         timelineBpm = bpm;
         timelineCount = BeatGrid32.count(0, bpm);
         if (timelineOverlay != null) timelineOverlay.invalidate();
+        if (waveformOverlay != null) waveformOverlay.invalidate();
     }
 
     private void updateTimelineCount() {
@@ -81,6 +90,7 @@ public final class SwaggaConsoleView extends FrameLayout {
         displayedDurationMs = Math.max(0, durationMs);
         displayedPositionMs = Math.max(0, Math.min(positionMs, displayedDurationMs));
         updateTimelineCount();
+        if (waveformOverlay != null) waveformOverlay.invalidate();
         if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
     }
 
@@ -166,10 +176,10 @@ public final class SwaggaConsoleView extends FrameLayout {
                 canvas.drawText(label, w * .022f, h * .507f, paint);
                 float labelEnd = w * .022f + paint.measureText(label) + w * .016f;
                 paint.setColor(Color.rgb(139, 255, 30));
-                canvas.drawText(timelineBpm > 0 ? "•  32 LIVE" : "•  32 COUNTS", labelEnd, h * .507f, paint);
+                canvas.drawText(timelineBpm > 0 ? "•  SMART WAVE 32" : "•  32 COUNTS", labelEnd, h * .507f, paint);
 
                 final float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
-                final float groupGap = w * .006f;
+                final float groupGap = timelineBpm > 0 ? 0f : w * .006f;
                 final float cellWidth = (right - left - 3f * groupGap) / 32f;
                 for (int i = 0; i < 32; i++) {
                     float x = left + i * cellWidth + (i / 8) * groupGap;
@@ -249,7 +259,6 @@ public final class SwaggaConsoleView extends FrameLayout {
         waveformOverlay = new View(context) {
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas canvas) {
-                if (waveformPeaks.length == 0) return;
                 float w = getWidth(), h = getHeight();
                 float left = w * WAVE_LEFT, right = w * WAVE_RIGHT;
                 float top = h * WAVE_TOP, bottom = h * WAVE_BOTTOM;
@@ -257,19 +266,38 @@ public final class SwaggaConsoleView extends FrameLayout {
                 float middle = (top + bottom) / 2f;
                 canvas.save();
                 canvas.clipRect(left, top, right, bottom);
-                paint.setStrokeWidth(2f);
-                for (int i = 0; i < waveformPeaks.length; i++) {
-                    float fraction = (i + 0.5f) / waveformPeaks.length;
-                    float x = left + fraction * width;
-                    float amplitude = Math.min(1f, Math.max(0f, waveformPeaks[i]));
-                    float extent = amplitude * height / 2f * .88f;
-                    paint.setColor(fraction <= waveformProgress ? WAVE_GREEN : WAVE_CYAN);
-                    canvas.drawLine(x, middle - extent, x, middle + extent, paint);
+                boolean live = timelineBpm > 0;
+                double startMs = live ? windowStart() : 0;
+                double spanMs = live ? windowSpan() : displayedDurationMs;
+                float local = live ? (float)Math.max(0,Math.min(1,(displayedPositionMs-startMs)/spanMs)) : waveformProgress;
+                if (live) for(int beat=0;beat<=32;beat++) {
+                    float x = left + width * beat / 32f;
+                    paint.setColor(beat%8==0 ? Color.rgb(23,125,129) : Color.rgb(20,49,56));
+                    paint.setStrokeWidth(beat%8==0 ? 2f : 1f);
+                    canvas.drawLine(x,top,x,bottom,paint);
+                }
+                if (displayedDurationMs > 0 && spanMs > 0 && waveformPeaks.length > 0) {
+                    int first = Math.max(0,(int)Math.floor(startMs*waveformPeaks.length/displayedDurationMs));
+                    int end = Math.min(waveformPeaks.length,(int)Math.ceil((startMs+spanMs)*waveformPeaks.length/displayedDurationMs));
+                    int stride = Math.max(1,(int)Math.ceil((end-first)/Math.max(1.0,width/2)));
+                    paint.setStrokeWidth(2f);
+                    for(int i=first;i<end;i+=stride) {
+                        float amplitude=0;
+                        int jEnd=Math.min(end,i+stride);
+                        for(int j=i;j<jEnd;j++) amplitude=Math.max(amplitude,waveformPeaks[j]);
+                        double time=(i+(jEnd-i)/2.0)*displayedDurationMs/waveformPeaks.length;
+                        float fraction=(float)((time-startMs)/spanMs);
+                        if(fraction<0 || fraction>1) continue;
+                        float x=left+fraction*width;
+                        float extent=Math.min(1f,Math.max(0f,amplitude))*height/2f*.88f;
+                        paint.setColor(fraction<=local ? WAVE_GREEN : WAVE_CYAN);
+                        canvas.drawLine(x,middle-extent,x,middle+extent,paint);
+                    }
                 }
                 paint.setColor(Color.WHITE);
                 paint.setStrokeWidth(2f);
-                float cursor = left + waveformProgress * width;
-                canvas.drawLine(cursor, top, cursor, bottom, paint);
+                float cursor=left+local*width;
+                canvas.drawLine(cursor,top,cursor,bottom,paint);
                 canvas.restore();
             }
         };
@@ -346,9 +374,7 @@ public final class SwaggaConsoleView extends FrameLayout {
                 if (waveformDragging) {
                     if (e.getActionMasked() == MotionEvent.ACTION_MOVE
                             || e.getActionMasked() == MotionEvent.ACTION_UP) {
-                        float progress = Math.max(0f,
-                                Math.min(1f, (x - WAVE_LEFT) / (WAVE_RIGHT - WAVE_LEFT)));
-                        setWaveformProgress(progress);
+                        float progress = seekProgress(x);
                         actions.seek(progress);
                     }
                     if (e.getActionMasked() == MotionEvent.ACTION_UP
@@ -362,9 +388,9 @@ public final class SwaggaConsoleView extends FrameLayout {
                         && y >= .308f && y <= WAVE_BOTTOM
                         && x >= WAVE_LEFT && x <= WAVE_RIGHT) {
                     waveformDragging = true;
-                    float progress = Math.max(0f,
-                            Math.min(1f, (x - WAVE_LEFT) / (WAVE_RIGHT - WAVE_LEFT)));
-                    setWaveformProgress(progress);
+                    draggingWindow = timelineBpm > 0 && y >= WAVE_TOP;
+                    dragStart = windowStart();
+                    float progress = seekProgress(x);
                     actions.seek(progress);
                     return true;
                 }

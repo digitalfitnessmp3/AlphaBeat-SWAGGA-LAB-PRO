@@ -83,7 +83,18 @@ public final class MainActivity extends Activity {
         swaggaView.setTrackPosition(0, 0);
         swaggaView.setTrackInfo(
                 displayOverride == null ? "Caricamento brano…" : displayOverride, 0);
+        final int waveGeneration = ++waveformGeneration;
+        swaggaView.setWaveformPeaks(null);
+        swaggaView.setWaveformProgress(0f);
         if (uri == null) return;
+        new Thread(() -> {
+            try {
+                float[] peaks = com.alphabeat.daw.audio.WaveformAnalyzer.analyze(getApplicationContext(), uri, 8192);
+                runOnUiThread(() -> {
+                    if (waveGeneration == waveformGeneration && uri.equals(selectedAudio) && swaggaView != null) swaggaView.setWaveformPeaks(peaks);
+                });
+            } catch (Exception e) { android.util.Log.w("SWAGGA_AUDIO", "Waveform non disponibile", e); }
+        }, "SWAGGA-Waveform").start();
         new Thread(() -> {
             String title = displayOverride;
             int durationMs = 0;
@@ -1158,38 +1169,7 @@ public final class MainActivity extends Activity {
             originalTrackTitle = "Brano originale";
             updateTrackInfo(selectedAudio, null);
             final Uri audio = selectedAudio;
-            final int generation = ++waveformGeneration;
-
-            if (swaggaView != null) {
-                swaggaView.setWaveformPeaks(null);
-                swaggaView.setWaveformProgress(0f);
-            }
-
-            new Thread(() -> {
-                try {
-                    float[] peaks =
-                            com.alphabeat.daw.audio.WaveformAnalyzer
-                                    .analyze(this, audio, 600);
-
-                    runOnUiThread(() -> {
-                        if (generation == waveformGeneration
-                                && swaggaView != null) {
-                            swaggaView.setWaveformPeaks(peaks);
-                        }
-                    });
-                } catch (Exception e) {
-                    android.util.Log.e(
-                            "SWAGGA_AUDIO",
-                            "Errore analisi waveform", e);
-                    runOnUiThread(() -> {
-                        if (generation == waveformGeneration) {
-                            Toast.makeText(this,
-                                    "Waveform non disponibile",
-                                    Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-            }, "SWAGGA-Waveform").start();
+            final int generation = waveformGeneration;
 
             new Thread(() -> {
                 try {
