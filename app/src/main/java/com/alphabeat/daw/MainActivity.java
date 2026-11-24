@@ -160,7 +160,7 @@ public final class MainActivity extends Activity {
 
 
     private void showSwaggaSetup() {
-        final int[] bpmValues = {128, 140, 150, 160, 180, 200, 220, 240, 260};
+        final int[] bpmValues = {128, 140, 150, 160, 180};
         final int[] pendingBpm = {selectedTargetBpm};
 
         android.widget.LinearLayout layout =
@@ -200,8 +200,7 @@ public final class MainActivity extends Activity {
                 new android.widget.Spinner(this);
 
         String[] options = {"128 BPM", "140 BPM", "150 BPM",
-                            "160 BPM", "180 BPM", "200 BPM",
-                            "220 BPM", "240 BPM", "260 BPM"};
+                            "160 BPM", "180 BPM"};
 
         android.widget.ArrayAdapter<String> adapter =
                 new android.widget.ArrayAdapter<>(
@@ -601,14 +600,13 @@ public final class MainActivity extends Activity {
     private boolean remixInProgress = false;
     private Uri originalAudio;
 
-    private int selectedTargetBpm = 160;
+    private int selectedTargetBpm = 128;
 
     private void showTargetBpmSelector() {
-        final int[] values = {128, 140, 150, 160, 180, 200, 220, 240, 260};
+        final int[] values = {128, 140, 150, 160, 180};
         final String[] labels = {
                 "128 BPM", "140 BPM", "150 BPM",
-                "160 BPM", "180 BPM", "200 BPM",
-                "220 BPM", "240 BPM", "260 BPM"
+                "160 BPM", "180 BPM"
         };
 
         int selected = 0;
@@ -652,10 +650,9 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        final int[] bpmValues = {128, 140, 150, 160, 180, 200, 220, 240, 260};
+        final int[] bpmValues = {128, 140, 150, 160, 180};
         final String[] bpmLabels = {
-                "128", "140", "150", "160", "180",
-                "200", "220", "240", "260"
+                "128", "140", "150", "160", "180"
         };
 
         android.widget.LinearLayout layout =
@@ -694,7 +691,7 @@ public final class MainActivity extends Activity {
         android.widget.GridLayout bpmGrid =
                 new android.widget.GridLayout(this);
         bpmGrid.setColumnCount(3);
-        bpmGrid.setRowCount(3);
+        bpmGrid.setRowCount(2);
         java.util.List<android.widget.RadioButton> bpmButtons =
                 new java.util.ArrayList<>();
 
@@ -704,7 +701,7 @@ public final class MainActivity extends Activity {
             button.setText(String.valueOf(bpm));
             button.setTextSize(14);
             button.setTag(bpm);
-            button.setChecked(bpm == targetDefault);
+            button.setChecked(bpm == (isSupportedFitnessTarget(targetDefault) ? targetDefault : 128));
             android.widget.GridLayout.LayoutParams params =
                     new android.widget.GridLayout.LayoutParams();
             params.width = 0;
@@ -739,7 +736,7 @@ public final class MainActivity extends Activity {
                             throw new NumberFormatException();
                         }
 
-                        int targetBpm = targetDefault;
+                        int targetBpm = isSupportedFitnessTarget(targetDefault) ? targetDefault : 128;
 
                         for (android.widget.RadioButton button : bpmButtons) {
                             if (button.isChecked()) {
@@ -826,7 +823,15 @@ public final class MainActivity extends Activity {
         }, "SWAGGA-Export").start();
     }
 
+    private static boolean isSupportedFitnessTarget(int bpm) {
+        return bpm == 128 || bpm == 140 || bpm == 150 || bpm == 160 || bpm == 180;
+    }
+
     private void createFitnessRemix(int sourceBpm, int targetBpm) {
+        if (!isSupportedFitnessTarget(targetBpm)) {
+            Toast.makeText(this, "Fitness 32: scegli 128, 140, 150, 160 o 180 BPM", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (selectedAudio == null) {
             Toast.makeText(this, "Carica prima un MP3",
                     Toast.LENGTH_SHORT).show();
@@ -888,7 +893,14 @@ public final class MainActivity extends Activity {
                                 || error.contains("Candidati BPM concorrenti")
                                 || error.contains("mai inferiori agli originali"));
 
-                    if (tempoUncertain) {
+                    if (error.contains("HTTP 422") && error.contains("Target BPM non supportato")) {
+                        new android.app.AlertDialog.Builder(this)
+                                .setTitle("BPM remix non accettato")
+                                .setMessage("Il server ha rifiutato " + targetBpm + " BPM. Scegli un altro BPM. Per il primo collaudo prova 128 BPM.")
+                                .setNegativeButton("ANNULLA", null)
+                                .setPositiveButton("SCEGLI BPM", (dialog, which) -> showRemixBpmDialog(sourceBpm != 0, 128))
+                                .show();
+                    } else if (tempoUncertain) {
                         new android.app.AlertDialog.Builder(this)
                                 .setTitle("BPM AUTO non riconosciuti")
                                 .setMessage(
