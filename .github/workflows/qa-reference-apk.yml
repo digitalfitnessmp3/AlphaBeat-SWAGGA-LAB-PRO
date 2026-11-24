@@ -1,8 +1,8 @@
-name: QA SWAGGA 2.2.3 STABLE transport APK (not Play)
+name: QA SWAGGA 2.2.4 V6 Club APK (not Play)
 
 on:
   push:
-    branches: [qa/swagga-transport-fixed-length-20261124]
+    branches: [qa/swagga-v6-club-android-20261124]
     paths:
       - ".github/workflows/qa-reference-apk.yml"
       - "app/**"
@@ -41,13 +41,13 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-      - name: Compile side-by-side QA 2.2.3 debug
+      - name: Compile side-by-side QA 2.2.4 debug
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
       - name: Check separate QA package identity
         run: |
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='com.alphabeat.daw.swaggalab.qa223'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -F "package: name='com.alphabeat.daw.swaggalab.qa224'"
       - name: Record QA APK fingerprint
         run: |
           sha256sum app/build/outputs/apk/debug/app-debug.apk
@@ -55,7 +55,7 @@ jobs:
       - name: Upload analysis artifact (not a Play release)
         uses: actions/upload-artifact@v4
         with:
-          name: swagga-2.2.3-QA-STABLE-DEBUG
+          name: swagga-2.2.4-QA-V6-CLUB-DEBUG
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7

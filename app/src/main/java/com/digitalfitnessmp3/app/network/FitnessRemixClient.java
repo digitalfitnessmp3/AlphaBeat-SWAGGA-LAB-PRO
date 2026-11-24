@@ -13,6 +13,8 @@ public final class FitnessRemixClient {
     private static final String ENDPOINT =
             "https://digitalfitnessmp3.com/api/free-fitness/remix";
 
+    // QA only: never enable the legacy public route for this mode.
+    private static final String V6 = "https://digitalfitnessmp3-menu-staging-test.onrender.com/api/free-fitness/batida-extreme/jobs";
     private FitnessRemixClient() {}
 
     public static File createRemix(Context context, Uri source, int targetBpm)
@@ -107,11 +109,11 @@ public final class FitnessRemixClient {
         try {
             requestBody = File.createTempFile("dfmp3-upload-", ".multipart", context.getCacheDir());
             connection = (HttpURLConnection)
-                    new URL(batida ? ENDPOINT.replace("/remix", "/batida-extreme") : ENDPOINT).openConnection();
+                    new URL(batida ? V6 : ENDPOINT).openConnection();
 
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(15000);
-            connection.setReadTimeout(batida ? 260000 : 180000);
+            connection.setReadTimeout(batida ? 60000 : 180000);
             connection.setDoOutput(true);
 
             connection.setRequestProperty(
@@ -178,7 +180,14 @@ public final class FitnessRemixClient {
             phase = "Risposta server";
             int status = connection.getResponseCode();
 
-            if (status != 200) {
+            if (batida && status == 202) {
+                String token = readJobToken(connection);
+                connection.disconnect();
+                connection = null;
+                phase = "Recupero V6 Club QA";
+                return followV6(context, token);
+            }
+            if (status != 200 || batida) {
                 String detail = "";
                 try (InputStream err = connection.getErrorStream()) {
                     if (err != null) {
@@ -253,5 +262,107 @@ public final class FitnessRemixClient {
             if (connection != null) connection.disconnect();
             if (requestBody != null) requestBody.delete();
         }
+    }
+
+    private static org.json.JSONObject json(HttpURLConnection c) throws IOException {
+        try (InputStream in = c.getInputStream(); ByteArrayOutputStream buf = new ByteArrayOutputStream()) {
+            byte[] bytes = new byte[4096]; int n;
+            while ((n = in.read(bytes)) != -1) {
+                if (buf.size() + n > 65536) throw new IOException("Risposta JSON troppo grande");
+                buf.write(bytes, 0, n);
+            }
+            try { return new org.json.JSONObject(buf.toString("UTF-8")); }
+            catch (org.json.JSONException e) { throw new IOException("Risposta JSON non valida", e); }
+        }
+    }
+
+    private static String readJobToken(HttpURLConnection c) throws IOException {
+        String token = json(c).optString("job", "");
+        if (!token.matches("[A-Za-z0-9_-]{32,128}")) throw new IOException("Token job V6 non valido");
+        return token;
+    }
+
+    private static HttpURLConnection jobGet(String suffix, String token) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(V6 + suffix).openConnection();
+        c.setInstanceFollowRedirects(false);
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(20000);
+        c.setUseCaches(false);
+        c.setRequestProperty("Cache-Control", "no-store");
+        c.setRequestProperty("X-Batida-Job", token);
+        return c;
+    }
+
+    private static boolean retryable(int status) {
+        return status == 408 || status == 429 || status == 502 || status == 503 || status == 504;
+    }
+
+    private static File followV6(Context context, String token) throws IOException {
+        long deadline = android.os.SystemClock.elapsedRealtime() + 1320000L;
+        long delay = 2500;
+        while (android.os.SystemClock.elapsedRealtime() < deadline) {
+            HttpURLConnection c = null;
+            boolean ready = false;
+            try {
+                c = jobGet("/status", token);
+                int status = c.getResponseCode();
+                if (status == 404) throw new V6Terminal("HTTP 404: job scaduto o server riavviato");
+                if (status != 200) {
+                    if (!retryable(status)) throw new V6Terminal("HTTP " + status + ": stato V6 non disponibile");
+                    throw new IOException("Connessione temporaneamente non disponibile");
+                }
+                org.json.JSONObject state = json(c);
+                String s = state.optString("state");
+                if ("failed".equals(s)) throw new V6Terminal(state.optString("error", "Elaborazione V6 fallita"));
+                ready = "ready".equals(s);
+                if (!ready && !"running".equals(s)) throw new V6Terminal("Stato V6 non riconosciuto");
+                delay = 2500;
+            } catch (V6Terminal e) { throw e; }
+            catch (IOException e) { delay = Math.min(15000L, Math.max(4000L, delay * 2)); }
+            finally { if (c != null) c.disconnect(); }
+
+            if (ready) {
+                File output = null; boolean complete = false;
+                try {
+                    c = jobGet("/result", token);
+                    int code = c.getResponseCode();
+                    if (code == 404) throw new V6Terminal("HTTP 404: risultato V6 scaduto");
+                    if (code != 200) {
+                        if (!retryable(code)) throw new V6Terminal("HTTP " + code + ": download V6 non riuscito");
+                        throw new IOException("Download temporaneamente non disponibile");
+                    }
+                    if (!"140".equals(c.getHeaderField("X-Target-BPM"))
+                            || !"batida-extreme-qa".equals(c.getHeaderField("X-Remix-Mode"))
+                            || c.getContentType() == null
+                            || !c.getContentType().toLowerCase(java.util.Locale.ROOT).startsWith("audio/mpeg"))
+                        throw new V6Terminal("Risposta V6 non conforme");
+                    output = File.createTempFile("alphabeat-v6-", ".mp3", context.getCacheDir());
+                    long expected = c.getContentLengthLong(), size = 0;
+                    try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(output)) {
+                        byte[] buf = new byte[65536]; int n;
+                        while ((n = in.read(buf)) != -1) {
+                            size += n;
+                            if (size > 30L * 1024 * 1024) throw new V6Terminal("MP3 oltre il limite QA");
+                            out.write(buf, 0, n);
+                        }
+                    }
+                    if (size == 0 || (expected >= 0 && expected != size)) throw new IOException("Download incompleto");
+                    complete = true;
+                    return output;
+                } catch (V6Terminal e) { throw e; }
+                catch (IOException e) { delay = Math.min(15000L, Math.max(4000L, delay * 2)); }
+                finally {
+                    if (c != null) c.disconnect();
+                    if (!complete && output != null) output.delete();
+                }
+            }
+            try { Thread.sleep(delay); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException("Verifica V6 interrotta", e); }
+        }
+        throw new IOException("Tempo massimo recupero V6 raggiunto");
+    }
+
+    private static final class V6Terminal extends IOException {
+        V6Terminal(String message) { super(message); }
     }
 }

@@ -643,7 +643,7 @@ public final class MainActivity extends Activity {
                 .setTitle("ALPHABEAT REMIX ENGINE")
                 .setItems(new String[]{
                     "FITNESS 32 CLASSIC  |  128–260 BPM",
-                    "BATIDA EXTREME  |  140 BPM  (QA)"
+                    "V6 CLUB — TAMARRO MODE  |  140 BPM (QA)"
                 }, (dialog, which) -> {
                     if (which == 0) showRemixBpmDialog(false, selectedTargetBpm);
                     else showBatidaRemixDialog();
@@ -658,14 +658,14 @@ public final class MainActivity extends Activity {
         int pad = (int)(20 * getResources().getDisplayMetrics().density);
         layout.setPadding(pad, pad, pad, pad);
         android.widget.TextView info = new android.widget.TextView(this);
-        info.setText("COMMERCIAL DANCE • WORKOUT\n140 BPM fissi • Base 32 count\nVersione sperimentale: usa il brano originale. Lascia vuoto per analisi automatica.");
+        info.setText("COMMERCIAL DANCE • WORKOUT\n140 BPM fissi • Base 32 count\nServer QA separato: usa il brano originale. Elaborazione di alcuni minuti; mantieni l'app aperta. Lascia vuoto per analisi automatica.");
         layout.addView(info);
         android.widget.EditText source = new android.widget.EditText(this);
         source.setHint("BPM musicali originali (70–180)");
         source.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         layout.addView(source);
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
-                .setTitle("BATIDA EXTREME 140 — QA")
+                .setTitle("V6 CLUB — TAMARRO MODE 140 QA")
                 .setView(layout)
                 .setNegativeButton("ANNULLA", null)
                 .setPositiveButton("CREA REMIX", null)
@@ -887,7 +887,7 @@ public final class MainActivity extends Activity {
     }
 
     private void createFitnessRemix(int sourceBpm, int targetBpm, boolean batida) {
-        final String modeLabel = batida ? "Batida Extreme" : "Fitness 32";
+        final String modeLabel = batida ? "V6 Club" : "Fitness 32";
         if ((batida && targetBpm != 140) || !isSupportedFitnessTarget(targetBpm)) {
             Toast.makeText(this, "Fitness 32: scegli un BPM da 128 a 260 tra i valori disponibili", Toast.LENGTH_LONG).show();
             return;
@@ -955,7 +955,7 @@ public final class MainActivity extends Activity {
 
                     if (batida) {
                         new android.app.AlertDialog.Builder(this)
-                                .setTitle("Batida Extreme QA")
+                                .setTitle("V6 Club QA")
                                 .setMessage(error.contains("HTTP 503") || error.contains("HTTP 404")
                                     ? "Motore Batida non ancora attivo sul server. Il brano originale resta intatto."
                                     : "Remix non riuscito: " + error)
