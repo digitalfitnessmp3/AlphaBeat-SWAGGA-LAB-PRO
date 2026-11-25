@@ -2,22 +2,26 @@ plugins {
     id("com.android.application")
 }
 
-// Separate QA install; explicit trusted test origins only.
-val libraryApi = providers.gradleProperty("libraryQaApi").orElse("").get()
-val libraryAuth = providers.gradleProperty("libraryQaAuth").orElse("").get()
-val libraryKey = providers.gradleProperty("libraryQaPublicKey").orElse("").get()
-require(libraryApi.isEmpty() || (libraryApi.matches(Regex("https://[a-zA-Z0-9.-]+")) && libraryApi !in listOf("https://digitalfitnessmp3.com", "https://www.digitalfitnessmp3.com")))
-require(libraryAuth.isEmpty() || (libraryAuth.matches(Regex("https://[a-z0-9]+[.]supabase[.]co")) && libraryAuth != "https://kjgsdzqyctmguyznmqfm.supabase.co"))
-require(libraryKey.isEmpty() || libraryKey.matches(Regex("[a-zA-Z0-9_.-]+")))
-
-// Release candidate: block builds until the production cloud migration and OAuth
-// configuration are reviewed. Never distribute the QA database connection.
-require(libraryApi.isEmpty() && libraryAuth.isEmpty() && libraryKey.isEmpty()) {
-    "Release candidate: cloud configuration is not approved yet."
+// Official AlphaBeat library. Public project key only; never a service-role key.
+val libraryApi = "https://kjgsdzqyctmguyznmqfm.supabase.co"
+val libraryAuth = libraryApi
+val libraryKey = "sb_publishable_FY831v8_rYQv6shaVlU55g_omW39uvI"
+val libraryGoogleWebClient = providers.gradleProperty("libraryGoogleWebClient").orElse("").get()
+require(libraryGoogleWebClient.isEmpty() || libraryGoogleWebClient.matches(Regex("329922968354-[a-z0-9]{32}[.]apps[.]googleusercontent[.]com"))) {
+    "Supply the exact official Google Web OAuth client ID."
 }
+require(libraryGoogleWebClient != "329922968354-qva57sms2uj9uslr7h6q1kmsprci63ca.apps.googleusercontent.com") {
+    "QA OAuth client is not permitted."
+}
+
+// Closed Alpha testing only. Public rollout requires privacy and end-to-end review.
 tasks.configureEach {
     if (name == "bundleRelease" || name == "assembleRelease") {
-        doFirst { error("Release blocked: production library and Google OAuth must be verified first.") }
+        doFirst {
+            require(providers.gradleProperty("closedAlphaCandidate").orNull == "true" && libraryGoogleWebClient.isNotEmpty()) {
+                "Supply the official Web OAuth ID and explicitly select the closed Alpha candidate."
+            }
+        }
     }
 }
 
@@ -32,9 +36,10 @@ android {
         targetSdk = 36
         versionCode = 24
         versionName = "2.4.0"
-        buildConfigField("String", "LIBRARY_QA_API", "\"$libraryApi\"")
-        buildConfigField("String", "LIBRARY_QA_AUTH", "\"$libraryAuth\"")
-        buildConfigField("String", "LIBRARY_QA_PUBLIC_KEY", "\"$libraryKey\"")
+        buildConfigField("String", "LIBRARY_API", "\"$libraryApi\"")
+        buildConfigField("String", "LIBRARY_AUTH", "\"$libraryAuth\"")
+        buildConfigField("String", "LIBRARY_PUBLIC_KEY", "\"$libraryKey\"")
+        buildConfigField("String", "LIBRARY_GOOGLE_WEB_CLIENT", "\"$libraryGoogleWebClient\"")
     }
 
 
