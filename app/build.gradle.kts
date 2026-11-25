@@ -7,11 +7,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.alphabeat.daw.swaggalab.qa224"
+        applicationId = "com.alphabeat.daw.swaggalab"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "2.3.1-QA-SMART-CAST"
+        versionCode = 23
+        versionName = "2.3.1"
     }
 
 
