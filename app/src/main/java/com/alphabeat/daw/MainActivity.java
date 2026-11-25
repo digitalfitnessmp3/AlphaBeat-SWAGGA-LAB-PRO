@@ -916,6 +916,9 @@ public final class MainActivity extends Activity {
     private static final int SAVE_REMIX_MP3 = 1002;
     private Uri readyRemix;
     private boolean readyRemixV6 = false;
+    private int readyRemixLibraryBpm;
+    private String readyRemixLibraryTitle;
+    private boolean libraryUploadBusy;
 
     private void exportFitnessMp3() {
         if (remixInProgress) {
@@ -1023,6 +1026,8 @@ public final class MainActivity extends Activity {
                     selectedAudio = Uri.fromFile(remix);
                     readyRemix = selectedAudio;
                     readyRemixV6 = batida;
+                    readyRemixLibraryBpm = targetBpm;
+                    readyRemixLibraryTitle = originalTrackTitle + " - " + modeLabel + " " + targetBpm + " BPM";
                     remixInProgress = false;
                     if (swaggaView != null) swaggaView.setRemixPhase(null);
                     updateTrackInfo(selectedAudio,
@@ -1229,13 +1234,80 @@ public final class MainActivity extends Activity {
         if (librarySession != null && !librarySession.isCurrent()) endLibrarySession();
         new android.app.AlertDialog.Builder(this)
                 .setTitle("ALPHABEAT · FILE")
-                .setItems(new String[]{"Importa dal dispositivo", "MY LIBRARY", "Disconnetti account AlphaBeat"},
+                .setItems(new String[]{"Importa dal dispositivo", "MY LIBRARY", "SALVA IN MY LIBRARY", "Disconnetti account AlphaBeat"},
                     (dialog, which) -> {
                         if (which == 0) openAudioPickerForChannel(1);
                         else if (which == 1) showLibraryAccess();
+                        else if (which == 2) showSaveLibraryRemix();
                         else endLibrarySession();
                     })
                 .setNegativeButton("ANNULLA", null).show();
+    }
+
+    private void showSaveLibraryRemix() {
+        if (libraryUploadBusy) {
+            Toast.makeText(this, "Salvataggio cloud in corso", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (remixInProgress || readyRemix == null) {
+            Toast.makeText(this, "Crea prima un remix completo", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!libraryConfigured() || librarySession == null || !librarySession.isCurrent()) {
+            Toast.makeText(this, "Accedi e poi seleziona nuovamente SALVA IN MY LIBRARY", Toast.LENGTH_LONG).show();
+            showLibraryAccess();
+            return;
+        }
+        final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session = librarySession;
+        final Uri source = readyRemix;
+        final int bpm = readyRemixLibraryBpm;
+        if (bpm < 40 || bpm > 220) {
+            Toast.makeText(this, "Libreria QA: supportati remix da 40 a 220 BPM. Export locale disponibile.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!"file".equals(source.getScheme()) || source.getPath() == null) return;
+        final java.io.File file = new java.io.File(source.getPath());
+        if (!file.isFile() || file.length() <= 0 || file.length() > 50_000_000L) {
+            Toast.makeText(this, "File non disponibile o superiore a 50 MB", Toast.LENGTH_LONG).show();
+            return;
+        }
+        android.widget.EditText title = new android.widget.EditText(this);
+        title.setSingleLine(true);
+        title.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(200)});
+        title.setText(readyRemixLibraryTitle == null ? "AlphaBeat Remix" : readyRemixLibraryTitle);
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("SALVA IN MY LIBRARY")
+            .setMessage("Carica questo MP3 nel tuo archivio privato QA. Nessuna pubblicazione automatica.")
+            .setView(title)
+            .setNegativeButton("ANNULLA", null)
+            .setPositiveButton("SALVA", (dialog, which) -> {
+                final String name = title.getText().toString().trim();
+                if (name.isEmpty() || libraryUploadBusy || librarySession != session
+                        || !session.isCurrent() || !source.equals(readyRemix)) {
+                    Toast.makeText(this, "Salvataggio annullato: verifica titolo e sessione", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                libraryUploadBusy = true;
+                Toast.makeText(this, "Caricamento privato in corso…", Toast.LENGTH_LONG).show();
+                new Thread(() -> {
+                    boolean ok = false;
+                    try {
+                        com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient client =
+                            new com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient(
+                                BuildConfig.LIBRARY_QA_API, BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY);
+                        client.saveRemix(file, session.owner, session.accessToken(), name, bpm, session::isCurrent);
+                        ok = true;
+                    } catch (Exception ignored) {}
+                    final boolean saved = ok;
+                    runOnUiThread(() -> {
+                        libraryUploadBusy = false;
+                        if (libraryDestroyed || isFinishing() || librarySession != session || !session.isCurrent()) return;
+                        Toast.makeText(this, saved ? "REMIX SALVATO IN MY LIBRARY"
+                            : "Salvataggio non confermato. Controlla MY LIBRARY prima di riprovare.", Toast.LENGTH_LONG).show();
+                        if (saved) openAuthenticatedLibrary();
+                    });
+                }, "AlphaBeat-QA-upload").start();
+            }).show();
     }
 
     private void showLibraryAccess() {
@@ -1507,6 +1579,8 @@ public final class MainActivity extends Activity {
             originalAudio = selectedAudio;
             readyRemix = null;
             readyRemixV6 = false;
+            readyRemixLibraryBpm = 0;
+            readyRemixLibraryTitle = null;
             originalTrackTitle = "Brano originale";
             updateTrackInfo(selectedAudio, null);
             final Uri audio = selectedAudio;
