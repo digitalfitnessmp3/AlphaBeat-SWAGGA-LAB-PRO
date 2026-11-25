@@ -34,8 +34,8 @@ android {
         applicationId = "com.alphabeat.daw.swaggalab"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "2.4.0"
+        versionCode = 25
+        versionName = "2.4.1"
         buildConfigField("String", "LIBRARY_API", "\"$libraryApi\"")
         buildConfigField("String", "LIBRARY_AUTH", "\"$libraryAuth\"")
         buildConfigField("String", "LIBRARY_PUBLIC_KEY", "\"$libraryKey\"")
