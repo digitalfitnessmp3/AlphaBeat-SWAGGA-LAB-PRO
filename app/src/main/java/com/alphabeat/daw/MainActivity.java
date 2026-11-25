@@ -1193,15 +1193,170 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        clearPersonalLibrary();
+        libraryDestroyed = true;
+        endLibrarySession();
         stopEditPreview();
         stopAudio();
         super.onDestroy();
     }
 
 
+    private com.digitalfitnessmp3.app.network.AlphaBeatAccountClient libraryAccount;
+    private com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session librarySession;
+    private boolean libraryLoginBusy;
+    private int libraryLoginGeneration;
+    private volatile boolean libraryDestroyed;
+    private final Runnable libraryExpiryCheck = new Runnable() {
+        public void run() {
+            if (librarySession == null || libraryDestroyed) return;
+            if (!librarySession.isCurrent()) {
+                endLibrarySession();
+                Toast.makeText(MainActivity.this, "Sessione AlphaBeat scaduta", Toast.LENGTH_SHORT).show();
+            } else {
+                swaggaHandler.postDelayed(this, 1000);
+            }
+        }
+    };
+
+    private boolean libraryConfigured() {
+        return !BuildConfig.LIBRARY_QA_API.isEmpty()
+                && !BuildConfig.LIBRARY_QA_AUTH.isEmpty()
+                && !BuildConfig.LIBRARY_QA_PUBLIC_KEY.isEmpty();
+    }
+
     private void openAudioPicker() {
-        openAudioPickerForChannel(1);
+        if (librarySession != null && !librarySession.isCurrent()) endLibrarySession();
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("ALPHABEAT · FILE")
+                .setItems(new String[]{"Importa dal dispositivo", "MY LIBRARY", "Disconnetti account AlphaBeat"},
+                    (dialog, which) -> {
+                        if (which == 0) openAudioPickerForChannel(1);
+                        else if (which == 1) showLibraryAccess();
+                        else endLibrarySession();
+                    })
+                .setNegativeButton("ANNULLA", null).show();
+    }
+
+    private void showLibraryAccess() {
+        if (!libraryConfigured()) {
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("MY LIBRARY · QA")
+                    .setMessage("Archivio cloud in collaudo. Ambiente di test non ancora configurato. L'importazione locale resta disponibile.")
+                    .setPositiveButton("OK", null).show();
+            return;
+        }
+        if (librarySession != null && librarySession.isCurrent()) {
+            openAuthenticatedLibrary();
+            return;
+        }
+        if (librarySession != null) endLibrarySession();
+        if (libraryLoginBusy) return;
+        android.widget.LinearLayout fields = new android.widget.LinearLayout(this);
+        fields.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        fields.setPadding(pad, pad, pad, pad);
+        android.widget.EditText email = new android.widget.EditText(this);
+        email.setHint("Email account QA");
+        email.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        android.widget.EditText password = new android.widget.EditText(this);
+        password.setHint("Password");
+        password.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        email.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        password.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
+        fields.addView(email);
+        fields.addView(password);
+        android.app.AlertDialog login = new android.app.AlertDialog.Builder(this)
+                .setTitle("ALPHABEAT · ACCOUNT QA")
+                .setMessage("Usa esclusivamente un account di collaudo.")
+                .setView(fields)
+                .setNegativeButton("ANNULLA", null)
+                .setPositiveButton("ACCEDI", null).create();
+        login.setOnDismissListener(d -> password.setText(""));
+        login.setOnShowListener(d -> {
+            login.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            login.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (libraryLoginBusy) return;
+                String address = email.getText().toString().trim();
+                String secret = password.getText().toString();
+                if (address.isEmpty() || secret.isEmpty()) {
+                    password.setError("Inserisci email e password");
+                    return;
+                }
+                password.setText("");
+                libraryLoginBusy = true;
+                final int attempt = ++libraryLoginGeneration;
+                login.dismiss();
+                new Thread(() -> {
+                    try {
+                        com.digitalfitnessmp3.app.network.AlphaBeatAccountClient account =
+                                new com.digitalfitnessmp3.app.network.AlphaBeatAccountClient(
+                                    BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY);
+                        com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session =
+                                account.signIn(address, secret);
+                        runOnUiThread(() -> {
+                            libraryLoginBusy = false;
+                            if (libraryDestroyed || isFinishing() || attempt != libraryLoginGeneration) {
+                                session.invalidate();
+                                new Thread(() -> {
+                                    try { account.signOut(session); } catch (Exception ignored) {}
+                                }).start();
+                                return;
+                            }
+                            libraryAccount = account;
+                            librarySession = session;
+                            swaggaHandler.removeCallbacks(libraryExpiryCheck);
+                            swaggaHandler.post(libraryExpiryCheck);
+                            openAuthenticatedLibrary();
+                        });
+                    } catch (Exception error) {
+                        runOnUiThread(() -> {
+                            libraryLoginBusy = false;
+                            if (!libraryDestroyed && !isFinishing())
+                                Toast.makeText(this, "Accesso QA non riuscito. Riprova.", Toast.LENGTH_LONG).show();
+                        });
+                    }
+                }, "AlphaBeat-QA-login").start();
+            });
+        });
+        login.show();
+    }
+
+    private void openAuthenticatedLibrary() {
+        final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session = librarySession;
+        if (session == null || !session.isCurrent()) return;
+        try {
+            openPersonalLibrary(
+                new com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient(
+                    BuildConfig.LIBRARY_QA_API, BuildConfig.LIBRARY_QA_AUTH),
+                session.owner, session.accessToken(), BuildConfig.LIBRARY_QA_PUBLIC_KEY,
+                session::isCurrent);
+        } catch (Exception error) {
+            Toast.makeText(this, "Libreria QA non disponibile", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void endLibrarySession() {
+        final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient account = libraryAccount;
+        final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session = librarySession;
+        libraryLoginGeneration++;
+        librarySession = null;
+        libraryAccount = null;
+        swaggaHandler.removeCallbacks(libraryExpiryCheck);
+        if (session != null) session.invalidate();
+        clearPersonalLibrary();
+        if (account != null && session != null) {
+            new Thread(() -> {
+                try { account.signOut(session); }
+                catch (Exception ignored) {
+                    runOnUiThread(() -> {
+                        if (!libraryDestroyed && !isFinishing())
+                            Toast.makeText(this, "Sessione locale terminata; logout remoto non confermato.", Toast.LENGTH_LONG).show();
+                    });
+                }
+            }, "AlphaBeat-QA-logout").start();
+        }
     }
 
     private void openAudioPickerForChannel(int channel) {
