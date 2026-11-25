@@ -64,19 +64,38 @@ public final class AlphaBeatAccountClient {
         try {
             JSONObject payload = new JSONObject().put("email", email.trim()).put("password", password);
             JSONObject data = request("POST", "/token?grant_type=password", payload, null);
-            String token = data.getString("access_token");
-            long lifetime = data.getLong("expires_in");
-            if (token.isEmpty() || token.contains("\r") || token.contains("\n") || lifetime <= 30)
-                throw new IOException("Sessione non valida.");
-            JSONObject user = request("GET", "/user", null, token);
-            UUID owner = UUID.fromString(user.getString("id"));
-            if (user.optBoolean("is_anonymous", false)) throw new IOException("Account permanente richiesto.");
-            if (!owner.equals(UUID.fromString(data.getJSONObject("user").getString("id"))))
-                throw new IOException("Identità non corrispondente.");
-            return new Session(owner, token, lifetime);
+            return verifiedSession(data);
         } catch (org.json.JSONException | IllegalArgumentException e) {
             throw new IOException("Risposta account non valida.");
         }
+    }
+
+    /** Exchange a Google ID token using the original, unhashed nonce. */
+    public Session signInGoogle(String idToken, String rawNonce) throws IOException {
+        if (!"https://zibsxuveoekuenppgkah.supabase.co".equals(origin)
+                || idToken == null || idToken.isEmpty()
+                || rawNonce == null || !rawNonce.matches("[0-9a-f]{64}"))
+            throw new IOException("Credenziale Google non valida.");
+        try {
+            JSONObject payload = new JSONObject().put("provider", "google")
+                .put("id_token", idToken).put("nonce", rawNonce);
+            return verifiedSession(request("POST", "/token?grant_type=id_token", payload, null));
+        } catch (org.json.JSONException | IllegalArgumentException e) {
+            throw new IOException("Risposta Google non valida.");
+        }
+    }
+
+    private Session verifiedSession(JSONObject data) throws IOException, org.json.JSONException {
+        String token = data.getString("access_token");
+        long lifetime = data.getLong("expires_in");
+        if (token.isEmpty() || token.contains("\r") || token.contains("\n") || lifetime <= 30)
+            throw new IOException("Sessione non valida.");
+        JSONObject user = request("GET", "/user", null, token);
+        UUID owner = UUID.fromString(user.getString("id"));
+        if (user.optBoolean("is_anonymous", false)) throw new IOException("Account permanente richiesto.");
+        if (!owner.equals(UUID.fromString(data.getJSONObject("user").getString("id"))))
+            throw new IOException("Identità non corrispondente.");
+        return new Session(owner, token, lifetime);
     }
 
     /** Invalidate locally immediately, then revoke this device session only.
