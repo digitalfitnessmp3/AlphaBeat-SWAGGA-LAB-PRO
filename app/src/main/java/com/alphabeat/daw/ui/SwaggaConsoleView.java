@@ -38,6 +38,7 @@ public final class SwaggaConsoleView extends FrameLayout {
 
     private final Actions actions;
     private float[] waveformPeaks = new float[0];
+    private float waveformReference = 1f;
     private float waveformProgress = 0f;
     private View waveformOverlay;
     private View selectorOverlay;
@@ -175,6 +176,16 @@ public final class SwaggaConsoleView extends FrameLayout {
 
     public void setWaveformPeaks(float[] peaks) {
         waveformPeaks = peaks == null ? new float[0] : peaks.clone();
+        // Display gain only: a robust reference prevents one transient
+        // from flattening the waveform. Never changes the playback volume.
+        float[] nonzero = new float[waveformPeaks.length];
+        int count = 0;
+        for (float peak : waveformPeaks) {
+            if (Float.isFinite(peak) && peak > .0001f) nonzero[count++] = peak;
+        }
+        java.util.Arrays.sort(nonzero, 0, count);
+        waveformReference = count == 0 ? 1f :
+                Math.max(.02f, nonzero[Math.min(count - 1, (int)(count * .95f))]);
         if (waveformOverlay != null) waveformOverlay.invalidate();
     }
 
@@ -340,7 +351,8 @@ public final class SwaggaConsoleView extends FrameLayout {
                     int first = Math.max(0,(int)Math.floor(startMs*waveformPeaks.length/displayedDurationMs));
                     int end = Math.min(waveformPeaks.length,(int)Math.ceil((startMs+spanMs)*waveformPeaks.length/displayedDurationMs));
                     int stride = Math.max(1,(int)Math.ceil((end-first)/Math.max(1.0,width/2)));
-                    paint.setStrokeWidth(2f);
+                    paint.setStrokeWidth(Math.max(1.5f, width / Math.max(1, (end-first)/stride) * .76f));
+                    paint.setStrokeCap(Paint.Cap.ROUND);
                     for(int i=first;i<end;i+=stride) {
                         float amplitude=0;
                         int jEnd=Math.min(end,i+stride);
@@ -349,11 +361,14 @@ public final class SwaggaConsoleView extends FrameLayout {
                         float fraction=(float)((time-startMs)/spanMs);
                         if(fraction<0 || fraction>1) continue;
                         float x=left+fraction*width;
-                        float extent=Math.min(1f,Math.max(0f,amplitude))*height/2f*.88f;
-                        paint.setColor(fraction<=local ? WAVE_GREEN : WAVE_CYAN);
+                        float normalized = Math.min(1f, Math.max(0f, amplitude) / waveformReference);
+                        float extent = (float)Math.pow(normalized, .56) * height * .465f;
+                        if (extent <= 0f) continue;
+                        paint.setColor(fraction <= local ? WAVE_GREEN : Color.rgb(65, 203, 119));
                         canvas.drawLine(x,middle-extent,x,middle+extent,paint);
                     }
                 }
+                paint.setStrokeCap(Paint.Cap.BUTT);
                 paint.setColor(Color.WHITE);
                 paint.setStrokeWidth(2f);
                 float cursor=left+local*width;
