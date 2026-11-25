@@ -22,6 +22,85 @@ public final class MainActivity extends Activity {
     private static final int PICK_AUDIO_CH4 = 1004;
 
     private final Uri[] channelAudio = new Uri[4];
+    // QA library imports are temporary, private and restricted to CH3/CH4.
+    private final java.io.File[] libraryFiles = new java.io.File[4];
+    private final String[] libraryTitles = new String[4];
+    private final int[] libraryBpm = new int[4];
+    private com.alphabeat.daw.ui.AlphaBeatLibraryDialog libraryDialog;
+
+    // The future verified login layer must call this on the UI thread with
+    // trusted origins and a session guard invalidated on logout/account switch.
+    private void openPersonalLibrary(
+            com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient client,
+            java.util.UUID owner, String accessToken, String publicKey,
+            java.util.function.BooleanSupplier sessionCurrent) {
+        if (sessionCurrent == null || !sessionCurrent.getAsBoolean()) {
+            Toast.makeText(this, "Accedi al tuo account AlphaBeat", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (libraryDialog != null) libraryDialog.close();
+        libraryDialog = new com.alphabeat.daw.ui.AlphaBeatLibraryDialog(
+                this, client, owner, accessToken, publicKey, sessionCurrent,
+                new com.alphabeat.daw.ui.AlphaBeatLibraryDialog.ImportTarget() {
+                    public boolean channelAvailable(int channel) {
+                        return (channel == 3 || channel == 4)
+                                && channelAudio[channel - 1] == null
+                                && !remixInProgress && sessionCurrent.getAsBoolean();
+                    }
+
+                    public boolean importAudio(int channel, java.io.File file, String title, int bpm) {
+                        if (!channelAvailable(channel) || file == null || !file.isFile()
+                                || file.length() <= 0) return false;
+                        int index = channel - 1;
+                        stopEditPreview();
+                        stopAudio();
+                        libraryFiles[index] = file;
+                        libraryTitles[index] = title;
+                        libraryBpm[index] = bpm >= 40 && bpm <= 220 ? bpm : 0;
+                        channelAudio[index] = Uri.fromFile(file);
+                        activeChannel = index;
+                        selectedAudio = channelAudio[index];
+                        swaggaPlaybackBpm = 128; // 1x: do not stretch an already-rendered remix.
+                        updateTrackInfo(selectedAudio, title);
+                        if (swaggaView != null) swaggaView.setDetectedBpm(libraryBpm[index]);
+                        return true;
+                    }
+                });
+        libraryDialog.open();
+    }
+
+    // Must also be called by the future authentication layer on logout/switch.
+    private void clearPersonalLibrary() {
+        if (libraryDialog != null) {
+            libraryDialog.close();
+            libraryDialog = null;
+        }
+        boolean selectedPrivate = false;
+        for (int i = 2; i <= 3; i++) {
+            if (libraryFiles[i] != null) {
+                if (channelAudio[i] != null && channelAudio[i].equals(selectedAudio)) {
+                    selectedPrivate = true;
+                }
+            }
+        }
+        stopEditPreview();
+        if (selectedPrivate) {
+            stopAudio();
+            selectedAudio = originalAudio;
+            activeChannel = 0;
+            swaggaPlaybackBpm = 128;
+            updateTrackInfo(selectedAudio, selectedAudio == null ? "Nessun brano" : originalTrackTitle);
+        }
+        for (int i = 2; i <= 3; i++) {
+            if (libraryFiles[i] != null) {
+                libraryFiles[i].delete();
+                libraryFiles[i] = null;
+                channelAudio[i] = null;
+                libraryTitles[i] = null;
+                libraryBpm[i] = 0;
+            }
+        }
+    }
     private final float[] channelVolume = {
             0.75f, 0.75f, 0.75f, 0.75f
     };
@@ -1047,7 +1126,11 @@ public final class MainActivity extends Activity {
         selectedAudio = audio;
         updateTrackInfo(selectedAudio,
                 channel == 2 ? originalTrackTitle + " - Fitness 32 "
-                        + selectedTargetBpm + " BPM" : null);
+                        + selectedTargetBpm + " BPM" : libraryTitles[channel - 1]);
+        if (channel >= 3 && libraryFiles[channel - 1] != null) {
+            swaggaPlaybackBpm = 128;
+            if (swaggaView != null) swaggaView.setDetectedBpm(libraryBpm[channel - 1]);
+        }
         applyEffectiveVolume();
 
         if (channel == 2) {
@@ -1110,6 +1193,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        clearPersonalLibrary();
         stopEditPreview();
         stopAudio();
         super.onDestroy();
@@ -1152,8 +1236,15 @@ public final class MainActivity extends Activity {
             int channel = requestCode == PICK_AUDIO_CH3 ? 3 : 4;
             Uri audio = data.getData();
 
-            channelAudio[channel - 1] = audio;
+            stopEditPreview();
             stopAudio();
+            if (libraryFiles[channel - 1] != null) {
+                libraryFiles[channel - 1].delete();
+                libraryFiles[channel - 1] = null;
+                libraryTitles[channel - 1] = null;
+                libraryBpm[channel - 1] = 0;
+            }
+            channelAudio[channel - 1] = audio;
             activeChannel = channel - 1;
             selectedAudio = audio;
             updateTrackInfo(audio, null);
