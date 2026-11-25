@@ -106,6 +106,11 @@ public final class MainActivity extends Activity {
     };
     private final boolean[] channelMuted = new boolean[4];
     private int activeChannel = 0;
+    private int consoleTransport = 0;
+    private void refreshConsoleState() {
+        if (swaggaView != null) swaggaView.setConsoleState(
+                selectedAudio == null ? 0 : activeChannel + 1, channelMuted, consoleTransport);
+    }
 
     private Uri selectedAudio;
     private android.media.MediaPlayer player;
@@ -132,6 +137,7 @@ public final class MainActivity extends Activity {
         if (channel < 1 || channel > 4) return;
         int index = channel - 1;
         channelMuted[index] = !channelMuted[index];
+        refreshConsoleState();
         applyEffectiveVolume();
         Toast.makeText(this,
                 "CH" + channel + (channelMuted[index]
@@ -175,15 +181,26 @@ public final class MainActivity extends Activity {
                 displayOverride == null ? "Caricamento brano…" : displayOverride, 0);
         final int waveGeneration = ++waveformGeneration;
         swaggaView.setWaveformPeaks(null);
+        swaggaView.setWaveformStatus(uri == null ? null : "ANALISI WAVEFORM…");
         swaggaView.setWaveformProgress(0f);
+        refreshConsoleState();
         if (uri == null) return;
         new Thread(() -> {
             try {
                 float[] peaks = com.alphabeat.daw.audio.WaveformAnalyzer.analyze(getApplicationContext(), uri, 8192);
                 runOnUiThread(() -> {
-                    if (waveGeneration == waveformGeneration && uri.equals(selectedAudio) && swaggaView != null) swaggaView.setWaveformPeaks(peaks);
+                    if (waveGeneration == waveformGeneration && uri.equals(selectedAudio) && swaggaView != null) {
+                        swaggaView.setWaveformPeaks(peaks);
+                        swaggaView.setWaveformStatus(null);
+                    }
                 });
-            } catch (Exception e) { android.util.Log.w("SWAGGA_AUDIO", "Waveform non disponibile", e); }
+            } catch (Exception e) {
+                android.util.Log.w("SWAGGA_AUDIO", "Waveform non disponibile", e);
+                runOnUiThread(() -> {
+                    if (waveGeneration == waveformGeneration && uri.equals(selectedAudio) && swaggaView != null)
+                        swaggaView.setWaveformStatus("WAVEFORM NON DISPONIBILE");
+                });
+            }
         }, "SWAGGA-Waveform").start();
         new Thread(() -> {
             String title = displayOverride;
@@ -684,6 +701,9 @@ public final class MainActivity extends Activity {
                     if (player == mp) updateSwaggaProgress();
                 });
                 player.setOnCompletionListener(mp -> {
+                    if (player != mp) return;
+                    consoleTransport = 0;
+                    refreshConsoleState();
                     mp.seekTo(0);
                     if (swaggaView != null) {
                         swaggaView.setWaveformProgress(0f);
@@ -694,6 +714,8 @@ public final class MainActivity extends Activity {
 
             if (!player.isPlaying()) {
                 player.start();
+                consoleTransport = 1;
+                refreshConsoleState();
                 applySwaggaPlaybackSpeed();
                 updateSwaggaProgress();
             }
@@ -1045,6 +1067,7 @@ public final class MainActivity extends Activity {
                     stopAudio();
                     selectedAudio = Uri.fromFile(remix);
                     readyRemix = selectedAudio;
+                    activeChannel = 1;
                     readyRemixV6 = batida;
                     readyRemixLibraryBpm = targetBpm;
                     readyRemixLibraryTitle = originalTrackTitle + " - " + modeLabel + " " + targetBpm + " BPM";
@@ -1122,6 +1145,8 @@ public final class MainActivity extends Activity {
     private void pauseAudio() {
         if (player != null && player.isPlaying()) {
             player.pause();
+            consoleTransport = 2;
+            refreshConsoleState();
             updateSwaggaProgress();
         }
     }
@@ -1190,6 +1215,8 @@ public final class MainActivity extends Activity {
     }
 
     private void stopAudio() {
+        consoleTransport = 0;
+        refreshConsoleState();
         swaggaHandler.removeCallbacks(swaggaProgressUpdater);
         if (swaggaView != null) {
             swaggaView.setWaveformProgress(0f);
@@ -1597,6 +1624,7 @@ public final class MainActivity extends Activity {
             stopAudio();
             selectedAudio = data.getData();
             originalAudio = selectedAudio;
+            activeChannel = 0;
             readyRemix = null;
             readyRemixV6 = false;
             readyRemixLibraryBpm = 0;
