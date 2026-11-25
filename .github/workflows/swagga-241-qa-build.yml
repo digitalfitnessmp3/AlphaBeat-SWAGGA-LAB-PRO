@@ -16,9 +16,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install SDK 36
-        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Install SDK 36 using runner Android SDK
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)"
+          fi
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-36' 'build-tools;35.0.0'
       - name: Compile debug APK
         run: bash gradlew --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
