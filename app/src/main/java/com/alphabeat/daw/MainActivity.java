@@ -158,7 +158,18 @@ public final class MainActivity extends Activity {
     private void updateTrackInfo(Uri uri, String displayOverride) {
         final int generation = ++trackInfoGeneration;
         if (swaggaView == null) return;
-        swaggaView.setTimelineBpm(readyRemixV6 && uri != null && uri.equals(readyRemix) ? 140 : 0);
+        int gridBpm = 0;
+        if (uri != null && uri.equals(readyRemix)) {
+            gridBpm = readyRemixLibraryBpm;
+        } else if (uri != null) {
+            for (int i = 2; i < 4; i++) {
+                if (libraryFiles[i] != null && uri.equals(channelAudio[i])) {
+                    gridBpm = libraryBpm[i];
+                    break;
+                }
+            }
+        }
+        swaggaView.setTimelineBpm(gridBpm);
         swaggaView.setTrackPosition(0, 0);
         swaggaView.setTrackInfo(
                 displayOverride == null ? "Caricamento brano…" : displayOverride, 0);
@@ -1130,8 +1141,7 @@ public final class MainActivity extends Activity {
         activeChannel = channel - 1;
         selectedAudio = audio;
         updateTrackInfo(selectedAudio,
-                channel == 2 ? originalTrackTitle + " - Fitness 32 "
-                        + selectedTargetBpm + " BPM" : libraryTitles[channel - 1]);
+                channel == 2 ? readyRemixLibraryTitle : libraryTitles[channel - 1]);
         if (channel >= 3 && libraryFiles[channel - 1] != null) {
             swaggaPlaybackBpm = 128;
             if (swaggaView != null) swaggaView.setDetectedBpm(libraryBpm[channel - 1]);
@@ -1141,7 +1151,7 @@ public final class MainActivity extends Activity {
         if (channel == 2) {
             swaggaPlaybackBpm = 128;
             if (swaggaView != null) {
-                swaggaView.setDetectedBpm(selectedTargetBpm);
+                swaggaView.setDetectedBpm(readyRemixLibraryBpm);
             }
         }
 
