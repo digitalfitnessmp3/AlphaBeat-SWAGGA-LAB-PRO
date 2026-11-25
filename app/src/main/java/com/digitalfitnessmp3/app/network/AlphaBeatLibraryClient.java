@@ -94,4 +94,86 @@ public final class AlphaBeatLibraryClient {
             throw new IOException("Risposta audio non valida");
         }
     }
+
+    /** Download only to the app-private cache. The caller must recheck the
+     * authenticated owner before importing into the timeline and delete the
+     * temporary file when finished or on logout. No automatic playback. */
+    public java.io.File downloadAudio(android.content.Context context,
+            UUID remixId, UUID ownerId, String accessToken, String publicKey,
+            java.util.function.BooleanSupplier sessionStillCurrent) throws IOException {
+        if (context == null || sessionStillCurrent == null || !sessionStillCurrent.getAsBoolean()) {
+            throw new IOException("Sessione non disponibile");
+        }
+        if (publicKey == null || publicKey.isEmpty() || publicKey.contains("\r")
+                || publicKey.contains("\n") || publicKey.startsWith("sb_secret_")) {
+            throw new IOException("Configurazione libreria non valida");
+        }
+        // Only allow publishable keys or legacy JWT keys explicitly marked anon.
+        if (!publicKey.startsWith("sb_publishable_")) {
+            try {
+                String[] parts = publicKey.split("\\.");
+                if (parts.length != 3) throw new IllegalArgumentException();
+                byte[] claims = android.util.Base64.decode(parts[1],
+                        android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP);
+                if (!"anon".equals(new JSONObject(new String(claims, StandardCharsets.UTF_8)).optString("role"))) {
+                    throw new IllegalArgumentException();
+                }
+            } catch (JSONException | IllegalArgumentException e) {
+                throw new IOException("Chiave pubblica richiesta");
+            }
+        }
+        URL audio = audioDescriptor(remixId, ownerId, accessToken);
+        if (!sessionStillCurrent.getAsBoolean()) throw new IOException("Sessione cambiata");
+        String suffix = audio.getPath().endsWith(".mp3") ? ".mp3" : ".wav";
+        String mime = ".mp3".equals(suffix) ? "audio/mpeg" : "audio/wav";
+        final long maxBytes = 100L * 1024 * 1024;
+        java.io.File dir = new java.io.File(context.getCacheDir(), "alphabeat-library");
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cache non disponibile");
+        java.io.File target = java.io.File.createTempFile("remix-", suffix, dir);
+        HttpURLConnection c = null;
+        boolean complete = false;
+        try {
+            c = (HttpURLConnection) audio.openConnection();
+            c.setInstanceFollowRedirects(false);
+            c.setConnectTimeout(15000);
+            c.setReadTimeout(30000);
+            c.setUseCaches(false);
+            c.setRequestProperty("Authorization", "Bearer " + accessToken);
+            c.setRequestProperty("apikey", publicKey);
+            c.setRequestProperty("Accept", mime);
+            c.setRequestProperty("Accept-Encoding", "identity");
+            c.setRequestProperty("Cache-Control", "no-store");
+            int status = c.getResponseCode();
+            if (status != 200) throw new IOException("Audio non disponibile: HTTP " + status);
+            String actualType = c.getContentType();
+            if (actualType == null || !mime.equalsIgnoreCase(actualType.split(";")[0].trim())) {
+                throw new IOException("Formato audio non valido");
+            }
+            long expected = c.getContentLengthLong();
+            if (expected == 0 || expected > maxBytes) throw new IOException("Dimensione audio non valida");
+            long count = 0;
+            try (InputStream in = c.getInputStream();
+                 java.io.FileOutputStream out = new java.io.FileOutputStream(target)) {
+                byte[] buffer = new byte[32768];
+                int n;
+                while ((n = in.read(buffer)) != -1) {
+                    if (Thread.currentThread().isInterrupted() || !sessionStillCurrent.getAsBoolean()) {
+                        throw new IOException("Download annullato");
+                    }
+                    count += n;
+                    if (count > maxBytes) throw new IOException("Audio superiore a 100 MB");
+                    out.write(buffer, 0, n);
+                }
+            }
+            if (count == 0 || (expected >= 0 && count != expected)
+                    || !sessionStillCurrent.getAsBoolean()) {
+                throw new IOException("Download incompleto o sessione cambiata");
+            }
+            complete = true;
+            return target;
+        } finally {
+            if (c != null) c.disconnect();
+            if (!complete) target.delete();
+        }
+    }
 }
