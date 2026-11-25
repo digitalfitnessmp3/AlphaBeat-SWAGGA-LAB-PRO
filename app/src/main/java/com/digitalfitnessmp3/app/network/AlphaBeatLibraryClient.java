@@ -11,7 +11,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-/** QA-only library adapter. Call on a worker thread with the current
+/** Production library adapter. Call on a worker thread with the current
  * authenticated user's access token. No tokens are stored by this class.
  * Origins must come from trusted build configuration, never user input.
  * Not connected to the release UI or a live database. */
@@ -24,10 +24,10 @@ public final class AlphaBeatLibraryClient {
     public AlphaBeatLibraryClient(String apiOrigin, String storageOrigin, String publicKey) {
         this.apiOrigin = requireOrigin(apiOrigin);
         this.storageOrigin = requireOrigin(storageOrigin);
-        if (!"https://zibsxuveoekuenppgkah.supabase.co".equals(this.apiOrigin)
+        if (!"https://kjgsdzqyctmguyznmqfm.supabase.co".equals(this.apiOrigin)
                 || !this.apiOrigin.equals(this.storageOrigin)
                 || publicKey == null || !publicKey.matches("sb_publishable_[A-Za-z0-9_-]+")) {
-            throw new IllegalArgumentException("Configurazione QA non valida");
+            throw new IllegalArgumentException("Configurazione ufficiale non valida");
         }
         this.publicKey = publicKey;
     }
@@ -102,17 +102,17 @@ public final class AlphaBeatLibraryClient {
         }
     }
 
-    /** Explicit private QA upload. Never overwrites an object. */
+    /** Explicit private library upload. Never overwrites an object. */
     public void saveRemix(java.io.File file, UUID owner, String token, String title, int bpm,
             java.util.function.BooleanSupplier current) throws IOException {
         if (owner == null || token == null || token.isEmpty() || !current.getAsBoolean())
             throw new IOException("Accedi alla libreria.");
         if (file == null || !file.isFile() || file.length() <= 0 || file.length() > 50_000_000L)
             throw new IOException("MP3 non valido o superiore a 50 MB.");
-        if (!file.getName().endsWith(".mp3")) throw new IOException("Solo MP3 in questa versione QA.");
+        if (!file.getName().endsWith(".mp3")) throw new IOException("Solo MP3 in questa versione.");
         if (title == null || title.trim().isEmpty() || title.length() > 200)
             throw new IOException("Titolo non valido.");
-        if (bpm < 40 || bpm > 220) throw new IOException("Libreria QA: BPM da 40 a 220.");
+        if (bpm < 40 || bpm > 220) throw new IOException("Libreria: BPM da 40 a 220.");
         UUID id = UUID.randomUUID();
         String path = owner + "/" + id + ".mp3";
         long size = file.length();
@@ -134,7 +134,7 @@ public final class AlphaBeatLibraryClient {
             int status = upload.getResponseCode();
             if (status < 200 || status >= 300) throw new IOException("Upload non riuscito: HTTP " + status);
         } finally { upload.disconnect(); }
-        if (!current.getAsBoolean()) throw new IOException("Sessione cambiata; verifica archivio QA.");
+        if (!current.getAsBoolean()) throw new IOException("Sessione cambiata; verifica archivio privato.");
         try {
             byte[] data = new JSONObject().put("id", id.toString()).put("owner_id", owner.toString())
                 .put("storage_path", path).put("title", title.trim()).put("target_bpm", bpm)
@@ -143,7 +143,7 @@ public final class AlphaBeatLibraryClient {
             try {
                 row.setRequestProperty("Prefer", "return=minimal");
                 try (java.io.OutputStream out = row.getOutputStream()) { out.write(data); }
-                if (row.getResponseCode() != 201) throw new IOException("Registrazione non confermata; verifica archivio QA.");
+                if (row.getResponseCode() != 201) throw new IOException("Registrazione non confermata; verifica archivio privato.");
             } finally { row.disconnect(); }
         } catch (JSONException e) { throw new IOException("Metadati non validi."); }
         // Do not delete on uncertain response: a row may already have committed.
