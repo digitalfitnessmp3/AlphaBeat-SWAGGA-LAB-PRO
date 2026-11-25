@@ -12,8 +12,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-/** QA-only password login for existing AlphaBeat accounts.
- * Supply a trusted QA Supabase project origin and PUBLIC key from build config.
+/** Production password login for existing AlphaBeat accounts.
+ * Supply a trusted production Supabase project origin and PUBLIC key from build config.
  * No password, refresh token or access token is written to persistent storage.
  * OAuth providers and refresh-token rotation are deliberately not implemented yet. */
 public final class AlphaBeatAccountClient {
@@ -21,7 +21,7 @@ public final class AlphaBeatAccountClient {
     private final String publicKey;
 
     public AlphaBeatAccountClient(String origin, String publicKey) {
-        if (origin == null || !origin.matches("https://[a-z0-9]+\\.supabase\\.co"))
+        if (!"https://kjgsdzqyctmguyznmqfm.supabase.co".equals(origin))
             throw new IllegalArgumentException("Trusted project origin required");
         if (publicKey == null || publicKey.contains("\r") || publicKey.contains("\n"))
             throw new IllegalArgumentException("Public key required");
@@ -72,7 +72,7 @@ public final class AlphaBeatAccountClient {
 
     /** Exchange a Google ID token using the original, unhashed nonce. */
     public Session signInGoogle(String idToken, String rawNonce) throws IOException {
-        if (!"https://zibsxuveoekuenppgkah.supabase.co".equals(origin)
+        if (!"https://kjgsdzqyctmguyznmqfm.supabase.co".equals(origin)
                 || idToken == null || idToken.isEmpty()
                 || rawNonce == null || !rawNonce.matches("[0-9a-f]{64}"))
             throw new IOException("Credenziale Google non valida.");
@@ -92,7 +92,7 @@ public final class AlphaBeatAccountClient {
             throw new IOException("Sessione non valida.");
         JSONObject user = request("GET", "/user", null, token);
         UUID owner = UUID.fromString(user.getString("id"));
-        if (user.optBoolean("is_anonymous", false)) throw new IOException("Account permanente richiesto.");
+        if (user.optBoolean("is_anonymous", true)) throw new IOException("Account permanente richiesto.");
         if (!owner.equals(UUID.fromString(data.getJSONObject("user").getString("id"))))
             throw new IOException("Identità non corrispondente.");
         return new Session(owner, token, lifetime);
