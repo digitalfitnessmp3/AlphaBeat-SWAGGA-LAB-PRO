@@ -1329,7 +1329,7 @@ public final class MainActivity extends Activity {
         try {
             openPersonalLibrary(
                 new com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient(
-                    BuildConfig.LIBRARY_QA_API, BuildConfig.LIBRARY_QA_AUTH),
+                    BuildConfig.LIBRARY_QA_API, BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY),
                 session.owner, session.accessToken(), BuildConfig.LIBRARY_QA_PUBLIC_KEY,
                 session::isCurrent);
         } catch (Exception error) {
