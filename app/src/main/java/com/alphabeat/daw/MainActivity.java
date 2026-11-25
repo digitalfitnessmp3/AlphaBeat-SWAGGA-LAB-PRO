@@ -1017,6 +1017,15 @@ public final class MainActivity extends Activity {
         final Uri source = originalAudio != null
                 ? originalAudio : selectedAudio;
 
+        for (int i = 2; i < 4; i++) {
+            if (libraryFiles[i] != null &&
+                    (source.equals(Uri.fromFile(libraryFiles[i])) ||
+                     selectedAudio.equals(Uri.fromFile(libraryFiles[i])))) {
+                Toast.makeText(this, "Brano privato: importa un file locale per creare un nuovo remix.", Toast.LENGTH_LONG).show();
+                return;
+            }
+        }
+
         remixInProgress = true;
         if (swaggaView != null) swaggaView.setRemixPhase("PREPARAZIONE AUDIO");
 
@@ -1235,9 +1244,9 @@ public final class MainActivity extends Activity {
     };
 
     private boolean libraryConfigured() {
-        return !BuildConfig.LIBRARY_QA_API.isEmpty()
-                && !BuildConfig.LIBRARY_QA_AUTH.isEmpty()
-                && !BuildConfig.LIBRARY_QA_PUBLIC_KEY.isEmpty();
+        return !BuildConfig.LIBRARY_API.isEmpty()
+                && !BuildConfig.LIBRARY_AUTH.isEmpty()
+                && !BuildConfig.LIBRARY_PUBLIC_KEY.isEmpty();
     }
 
     private void openAudioPicker() {
@@ -1272,7 +1281,7 @@ public final class MainActivity extends Activity {
         final Uri source = readyRemix;
         final int bpm = readyRemixLibraryBpm;
         if (bpm < 40 || bpm > 220) {
-            Toast.makeText(this, "Libreria QA: supportati remix da 40 a 220 BPM. Export locale disponibile.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Libreria: supportati remix da 40 a 220 BPM. Export locale disponibile.", Toast.LENGTH_LONG).show();
             return;
         }
         if (!"file".equals(source.getScheme()) || source.getPath() == null) return;
@@ -1287,7 +1296,7 @@ public final class MainActivity extends Activity {
         title.setText(readyRemixLibraryTitle == null ? "AlphaBeat Remix" : readyRemixLibraryTitle);
         new android.app.AlertDialog.Builder(this)
             .setTitle("SALVA IN MY LIBRARY")
-            .setMessage("Carica questo MP3 nel tuo archivio privato QA. Nessuna pubblicazione automatica.")
+            .setMessage("Carica questo MP3 nel tuo archivio privato. Nessuna pubblicazione automatica.")
             .setView(title)
             .setNegativeButton("ANNULLA", null)
             .setPositiveButton("SALVA", (dialog, which) -> {
@@ -1304,7 +1313,7 @@ public final class MainActivity extends Activity {
                     try {
                         com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient client =
                             new com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient(
-                                BuildConfig.LIBRARY_QA_API, BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY);
+                                BuildConfig.LIBRARY_API, BuildConfig.LIBRARY_AUTH, BuildConfig.LIBRARY_PUBLIC_KEY);
                         client.saveRemix(file, session.owner, session.accessToken(), name, bpm, session::isCurrent);
                         ok = true;
                     } catch (Exception ignored) {}
@@ -1323,8 +1332,8 @@ public final class MainActivity extends Activity {
     private void showLibraryAccess() {
         if (!libraryConfigured()) {
             new android.app.AlertDialog.Builder(this)
-                    .setTitle("MY LIBRARY · QA")
-                    .setMessage("Archivio cloud in collaudo. Ambiente di test non ancora configurato. L'importazione locale resta disponibile.")
+                    .setTitle("MY LIBRARY")
+                    .setMessage("Archivio cloud non ancora configurato. L'importazione locale resta disponibile.")
                     .setPositiveButton("OK", null).show();
             return;
         }
@@ -1339,7 +1348,7 @@ public final class MainActivity extends Activity {
         int pad = (int) (24 * getResources().getDisplayMetrics().density);
         fields.setPadding(pad, pad, pad, pad);
         android.widget.EditText email = new android.widget.EditText(this);
-        email.setHint("Email account QA");
+        email.setHint("Email account AlphaBeat");
         email.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                 | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         android.widget.EditText password = new android.widget.EditText(this);
@@ -1351,7 +1360,7 @@ public final class MainActivity extends Activity {
         fields.addView(email);
         fields.addView(password);
         android.app.AlertDialog login = new android.app.AlertDialog.Builder(this)
-                .setTitle("ALPHABEAT · ACCOUNT QA")
+                .setTitle("ALPHABEAT · ACCOUNT")
                 .setMessage("Usa esclusivamente un account di collaudo.")
                 .setView(fields)
                 .setNegativeButton("ANNULLA", null)
@@ -1381,11 +1390,10 @@ public final class MainActivity extends Activity {
                     try {
                         com.digitalfitnessmp3.app.network.AlphaBeatAccountClient account =
                                 new com.digitalfitnessmp3.app.network.AlphaBeatAccountClient(
-                                    BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY);
+                                    BuildConfig.LIBRARY_AUTH, BuildConfig.LIBRARY_PUBLIC_KEY);
                         com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session =
                                 account.signIn(address, secret);
                         runOnUiThread(() -> {
-                            libraryLoginBusy = false;
                             if (libraryDestroyed || isFinishing() || attempt != libraryLoginGeneration) {
                                 session.invalidate();
                                 new Thread(() -> {
@@ -1393,6 +1401,7 @@ public final class MainActivity extends Activity {
                                 }).start();
                                 return;
                             }
+                            libraryLoginBusy = false;
                             libraryAccount = account;
                             librarySession = session;
                             swaggaHandler.removeCallbacks(libraryExpiryCheck);
@@ -1401,9 +1410,10 @@ public final class MainActivity extends Activity {
                         });
                     } catch (Exception error) {
                         runOnUiThread(() -> {
+                            if (attempt != libraryLoginGeneration) return;
                             libraryLoginBusy = false;
                             if (!libraryDestroyed && !isFinishing())
-                                Toast.makeText(this, "Accesso QA non riuscito. Riprova.", Toast.LENGTH_LONG).show();
+                                Toast.makeText(this, "Accesso non riuscito. Riprova.", Toast.LENGTH_LONG).show();
                         });
                     }
                 }, "AlphaBeat-QA-login").start();
@@ -1428,7 +1438,7 @@ public final class MainActivity extends Activity {
             for (byte b : digest) hashed.append(String.format(java.util.Locale.US, "%02x", b & 255));
             com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption option =
                 new com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption.Builder(
-                    "329922968354-qva57sms2uj9uslr7h6q1kmsprci63ca.apps.googleusercontent.com")
+                    BuildConfig.LIBRARY_GOOGLE_WEB_CLIENT)
                     .setNonce(hashed.toString()).build();
             androidx.credentials.GetCredentialRequest request =
                 new androidx.credentials.GetCredentialRequest.Builder().addCredentialOption(option).build();
@@ -1452,7 +1462,7 @@ public final class MainActivity extends Activity {
                                 try {
                                     com.digitalfitnessmp3.app.network.AlphaBeatAccountClient account =
                                         new com.digitalfitnessmp3.app.network.AlphaBeatAccountClient(
-                                            BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY);
+                                            BuildConfig.LIBRARY_AUTH, BuildConfig.LIBRARY_PUBLIC_KEY);
                                     com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session =
                                         account.signInGoogle(token, nonce);
                                     runOnUiThread(() -> {
@@ -1469,7 +1479,7 @@ public final class MainActivity extends Activity {
                                         openAuthenticatedLibrary();
                                     });
                                 } catch (Exception error) {
-                                    runOnUiThread(() -> failLibraryGoogleLogin(attempt, "Accesso Google QA non riuscito. Riprova."));
+                                    runOnUiThread(() -> failLibraryGoogleLogin(attempt, "Accesso Google non riuscito. Riprova."));
                                 }
                             }, "AlphaBeat-Google-QA").start();
                         } catch (Exception error) {
@@ -1498,11 +1508,11 @@ public final class MainActivity extends Activity {
         try {
             openPersonalLibrary(
                 new com.digitalfitnessmp3.app.network.AlphaBeatLibraryClient(
-                    BuildConfig.LIBRARY_QA_API, BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY),
-                session.owner, session.accessToken(), BuildConfig.LIBRARY_QA_PUBLIC_KEY,
+                    BuildConfig.LIBRARY_API, BuildConfig.LIBRARY_AUTH, BuildConfig.LIBRARY_PUBLIC_KEY),
+                session.owner, session.accessToken(), BuildConfig.LIBRARY_PUBLIC_KEY,
                 session::isCurrent);
         } catch (Exception error) {
-            Toast.makeText(this, "Libreria QA non disponibile", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Libreria non disponibile", Toast.LENGTH_SHORT).show();
         }
     }
 
