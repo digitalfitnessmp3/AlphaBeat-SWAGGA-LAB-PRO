@@ -102,6 +102,69 @@ public final class AlphaBeatLibraryClient {
         }
     }
 
+    /** Explicit private QA upload. Never overwrites an object. */
+    public void saveRemix(java.io.File file, UUID owner, String token, String title, int bpm,
+            java.util.function.BooleanSupplier current) throws IOException {
+        if (owner == null || token == null || token.isEmpty() || !current.getAsBoolean())
+            throw new IOException("Accedi alla libreria.");
+        if (file == null || !file.isFile() || file.length() <= 0 || file.length() > 50_000_000L)
+            throw new IOException("MP3 non valido o superiore a 50 MB.");
+        if (!file.getName().endsWith(".mp3")) throw new IOException("Solo MP3 in questa versione QA.");
+        if (title == null || title.trim().isEmpty() || title.length() > 200)
+            throw new IOException("Titolo non valido.");
+        if (bpm < 40 || bpm > 220) throw new IOException("Libreria QA: BPM da 40 a 220.");
+        UUID id = UUID.randomUUID();
+        String path = owner + "/" + id + ".mp3";
+        long size = file.length();
+        HttpURLConnection upload = writeConnection("/storage/v1/object/alphabeat-remixes/" + path, token, "audio/mpeg", size);
+        try {
+            upload.setRequestProperty("x-upsert", "false");
+            try (InputStream in = new java.io.FileInputStream(file);
+                 java.io.OutputStream out = upload.getOutputStream()) {
+                byte[] buffer = new byte[32768];
+                long sent = 0;
+                int n;
+                while ((n = in.read(buffer)) != -1) {
+                    if (!current.getAsBoolean() || sent + n > size) throw new IOException("Upload interrotto.");
+                    out.write(buffer, 0, n);
+                    sent += n;
+                }
+                if (sent != size) throw new IOException("File modificato.");
+            }
+            int status = upload.getResponseCode();
+            if (status < 200 || status >= 300) throw new IOException("Upload non riuscito: HTTP " + status);
+        } finally { upload.disconnect(); }
+        if (!current.getAsBoolean()) throw new IOException("Sessione cambiata; verifica archivio QA.");
+        try {
+            byte[] data = new JSONObject().put("id", id.toString()).put("owner_id", owner.toString())
+                .put("storage_path", path).put("title", title.trim()).put("target_bpm", bpm)
+                .toString().getBytes(StandardCharsets.UTF_8);
+            HttpURLConnection row = writeConnection("/rest/v1/user_remixes", token, "application/json", data.length);
+            try {
+                row.setRequestProperty("Prefer", "return=minimal");
+                try (java.io.OutputStream out = row.getOutputStream()) { out.write(data); }
+                if (row.getResponseCode() != 201) throw new IOException("Registrazione non confermata; verifica archivio QA.");
+            } finally { row.disconnect(); }
+        } catch (JSONException e) { throw new IOException("Metadati non validi."); }
+        // Do not delete on uncertain response: a row may already have committed.
+        if (!current.getAsBoolean()) throw new IOException("Sessione cambiata; verifica libreria.");
+    }
+
+    private HttpURLConnection writeConnection(String path, String token, String mime, long length) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(apiOrigin + path).openConnection();
+        c.setInstanceFollowRedirects(false);
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(60000);
+        c.setUseCaches(false);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        c.setRequestProperty("apikey", publicKey);
+        c.setRequestProperty("Content-Type", mime);
+        c.setFixedLengthStreamingMode(length);
+        return c;
+    }
+
     /** Download only to the app-private cache. The caller must recheck the
      * authenticated owner before importing into the timeline and delete the
      * temporary file when finished or on logout. No automatic playback. */
