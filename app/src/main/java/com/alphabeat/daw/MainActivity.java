@@ -1204,6 +1204,7 @@ public final class MainActivity extends Activity {
     private com.digitalfitnessmp3.app.network.AlphaBeatAccountClient libraryAccount;
     private com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session librarySession;
     private boolean libraryLoginBusy;
+    private android.os.CancellationSignal libraryGoogleCancel;
     private int libraryLoginGeneration;
     private volatile boolean libraryDestroyed;
     private final Runnable libraryExpiryCheck = new Runnable() {
@@ -1272,10 +1273,16 @@ public final class MainActivity extends Activity {
                 .setMessage("Usa esclusivamente un account di collaudo.")
                 .setView(fields)
                 .setNegativeButton("ANNULLA", null)
-                .setPositiveButton("ACCEDI", null).create();
+                .setPositiveButton("ACCEDI", null)
+                .setNeutralButton("ACCEDI CON GOOGLE", null).create();
         login.setOnDismissListener(d -> password.setText(""));
         login.setOnShowListener(d -> {
             login.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            login.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                if (libraryLoginBusy) return;
+                login.dismiss();
+                startLibraryGoogleLogin();
+            });
             login.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 if (libraryLoginBusy) return;
                 String address = email.getText().toString().trim();
@@ -1323,6 +1330,86 @@ public final class MainActivity extends Activity {
         login.show();
     }
 
+    private void startLibraryGoogleLogin() {
+        if (libraryLoginBusy || libraryDestroyed || isFinishing()) return;
+        libraryLoginBusy = true;
+        final int attempt = ++libraryLoginGeneration;
+        try {
+            byte[] random = new byte[32];
+            new java.security.SecureRandom().nextBytes(random);
+            StringBuilder raw = new StringBuilder();
+            for (byte b : random) raw.append(String.format(java.util.Locale.US, "%02x", b & 255));
+            final String nonce = raw.toString();
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(nonce.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hashed = new StringBuilder();
+            for (byte b : digest) hashed.append(String.format(java.util.Locale.US, "%02x", b & 255));
+            com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption option =
+                new com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption.Builder(
+                    "329922968354-qva57sms2uj9uslr7h6q1kmsprci63ca.apps.googleusercontent.com")
+                    .setNonce(hashed.toString()).build();
+            androidx.credentials.GetCredentialRequest request =
+                new androidx.credentials.GetCredentialRequest.Builder().addCredentialOption(option).build();
+            libraryGoogleCancel = new android.os.CancellationSignal();
+            androidx.credentials.CredentialManager.create(this).getCredentialAsync(
+                this, request, libraryGoogleCancel, getMainExecutor(),
+                new androidx.credentials.CredentialManagerCallback<
+                    androidx.credentials.GetCredentialResponse,
+                    androidx.credentials.exceptions.GetCredentialException>() {
+                    @Override public void onResult(androidx.credentials.GetCredentialResponse result) {
+                        if (libraryDestroyed || isFinishing() || attempt != libraryLoginGeneration) return;
+                        libraryGoogleCancel = null;
+                        try {
+                            androidx.credentials.Credential credential = result.getCredential();
+                            if (!(credential instanceof androidx.credentials.CustomCredential)
+                                    || !com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL.equals(credential.getType()))
+                                throw new IllegalArgumentException("Unsupported credential");
+                            String token = com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+                                .createFrom(credential.getData()).getIdToken();
+                            new Thread(() -> {
+                                try {
+                                    com.digitalfitnessmp3.app.network.AlphaBeatAccountClient account =
+                                        new com.digitalfitnessmp3.app.network.AlphaBeatAccountClient(
+                                            BuildConfig.LIBRARY_QA_AUTH, BuildConfig.LIBRARY_QA_PUBLIC_KEY);
+                                    com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session =
+                                        account.signInGoogle(token, nonce);
+                                    runOnUiThread(() -> {
+                                        if (libraryDestroyed || isFinishing() || attempt != libraryLoginGeneration) {
+                                            session.invalidate();
+                                            new Thread(() -> { try { account.signOut(session); } catch (Exception ignored) {} }).start();
+                                            return;
+                                        }
+                                        libraryLoginBusy = false;
+                                        libraryAccount = account;
+                                        librarySession = session;
+                                        swaggaHandler.removeCallbacks(libraryExpiryCheck);
+                                        swaggaHandler.post(libraryExpiryCheck);
+                                        openAuthenticatedLibrary();
+                                    });
+                                } catch (Exception error) {
+                                    runOnUiThread(() -> failLibraryGoogleLogin(attempt, "Accesso Google QA non riuscito. Riprova."));
+                                }
+                            }, "AlphaBeat-Google-QA").start();
+                        } catch (Exception error) {
+                            failLibraryGoogleLogin(attempt, "Credenziale Google non disponibile.");
+                        }
+                    }
+                    @Override public void onError(androidx.credentials.exceptions.GetCredentialException error) {
+                        failLibraryGoogleLogin(attempt, "Accesso Google annullato o non disponibile.");
+                    }
+                });
+        } catch (Exception error) {
+            failLibraryGoogleLogin(attempt, "Accesso Google non disponibile.");
+        }
+    }
+
+    private void failLibraryGoogleLogin(int attempt, String message) {
+        if (attempt != libraryLoginGeneration) return;
+        libraryGoogleCancel = null;
+        libraryLoginBusy = false;
+        if (!libraryDestroyed && !isFinishing()) Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
     private void openAuthenticatedLibrary() {
         final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session = librarySession;
         if (session == null || !session.isCurrent()) return;
@@ -1341,6 +1428,8 @@ public final class MainActivity extends Activity {
         final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient account = libraryAccount;
         final com.digitalfitnessmp3.app.network.AlphaBeatAccountClient.Session session = librarySession;
         libraryLoginGeneration++;
+        if (libraryGoogleCancel != null) { libraryGoogleCancel.cancel(); libraryGoogleCancel = null; }
+        libraryLoginBusy = false;
         librarySession = null;
         libraryAccount = null;
         swaggaHandler.removeCallbacks(libraryExpiryCheck);
