@@ -8,19 +8,51 @@ permissions:
 jobs:
   bundle:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-36"
-      - name: Build release bundle
-        run: gradle --no-daemon :app:bundleRelease
+      - name: Bootstrap Android command line tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/android-sdk/cmdline-tools/latest"
+          curl -fsSL --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/cmdline-tools.zip"
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/android-cmdline-unpack"
+          mv "$RUNNER_TEMP/android-cmdline-unpack/cmdline-tools/"* "$RUNNER_TEMP/android-sdk/cmdline-tools/latest/"
+          echo "ANDROID_HOME=$RUNNER_TEMP/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/android-sdk" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Build release AAB and APK for metadata tests
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify package identity, SDK and release debuggable flag
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | head -n 12
+          printf '%s\n' "$BADGING" | grep -F "package: name='com.alphabeat.daw.swaggalab'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='23' versionName='2.3.1'"
+          printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
+          if "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -E 'android:debuggable.*0xffffffff'; then
+            echo "::error::Release must not be debuggable"; exit 1
+          fi
+          echo "Release metadata check passed (AAB is UNSIGNED and not ready for Play)"
+          sha256sum "$AAB"
+          unzip -t "$AAB" | tail -n 1
       - name: Sign with existing Play upload key if configured
         id: signing
         env:
