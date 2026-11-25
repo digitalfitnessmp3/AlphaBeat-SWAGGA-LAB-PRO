@@ -40,6 +40,36 @@ public final class SwaggaConsoleView extends FrameLayout {
     private float[] waveformPeaks = new float[0];
     private float waveformProgress = 0f;
     private View waveformOverlay;
+    private View selectorOverlay;
+    private int selectedChannel = 0;
+    private final boolean[] mutedChannels = new boolean[4];
+    private int transportState = 0; // 0 STOP, 1 PLAY, 2 PAUSE
+    private String waveformStatus;
+    private float touchX = -1f, touchY = -1f;
+
+    public void setConsoleState(int channel, boolean[] muted, int transport) {
+        selectedChannel = channel;
+        System.arraycopy(muted, 0, mutedChannels, 0, 4);
+        transportState = transport;
+        if (selectorOverlay != null) selectorOverlay.invalidate();
+    }
+
+    public void setWaveformStatus(String status) {
+        waveformStatus = status;
+        if (waveformOverlay != null) waveformOverlay.invalidate();
+    }
+
+    @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN && getWidth() > 0 && getHeight() > 0) {
+            touchX = event.getX() / getWidth();
+            touchY = event.getY() / getHeight();
+        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            touchX = touchY = -1f;
+        }
+        if (selectorOverlay != null) selectorOverlay.invalidate();
+        return super.dispatchTouchEvent(event);
+    }
     private boolean faderDragging = false;
     private boolean waveformDragging = false;
     private boolean draggingWindow;
@@ -58,6 +88,7 @@ public final class SwaggaConsoleView extends FrameLayout {
     public void setRemixPhase(String phase) {
         if (java.util.Objects.equals(remixPhase, phase)) return;
         remixPhase = phase;
+        if (selectorOverlay != null) selectorOverlay.invalidate();
         if (timelineOverlay != null) timelineOverlay.invalidate();
     }
     private View timelineOverlay;
@@ -97,10 +128,11 @@ public final class SwaggaConsoleView extends FrameLayout {
     // il riquadro del titolo e del timer, senza alterare gli altri controlli.
     public void setTrackInfo(String title, int durationMs) {
         displayedTrackTitle = title == null ? "Brano audio" : title.trim();
-        displayedDurationMs = Math.max(0, durationMs);
+        if (durationMs > 0) displayedDurationMs = durationMs;
         displayedPositionMs = Math.min(displayedPositionMs, displayedDurationMs);
         updateTimelineCount();
         if (trackInfoOverlay != null) trackInfoOverlay.invalidate();
+        if (waveformOverlay != null) waveformOverlay.invalidate();
     }
 
     public void setTrackPosition(int positionMs, int durationMs) {
@@ -285,6 +317,9 @@ public final class SwaggaConsoleView extends FrameLayout {
                 float middle = (top + bottom) / 2f;
                 canvas.save();
                 canvas.clipRect(left, top, right, bottom);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(Color.rgb(3, 14, 17));
+                canvas.drawRect(left, top, right, bottom, paint);
                 boolean live = timelineBpm > 0;
                 double startMs = live ? windowStart() : 0;
                 double spanMs = live ? windowSpan() : displayedDurationMs;
@@ -294,6 +329,12 @@ public final class SwaggaConsoleView extends FrameLayout {
                     paint.setColor(beat%8==0 ? Color.rgb(23,125,129) : Color.rgb(20,49,56));
                     paint.setStrokeWidth(beat%8==0 ? 2f : 1f);
                     canvas.drawLine(x,top,x,bottom,paint);
+                }
+                if (waveformPeaks.length == 0 && waveformStatus != null) {
+                    paint.setColor(WAVE_CYAN);
+                    paint.setTextSize(h * .024f);
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    canvas.drawText(waveformStatus, (left + right) / 2f, middle, paint);
                 }
                 if (displayedDurationMs > 0 && spanMs > 0 && waveformPeaks.length > 0) {
                     int first = Math.max(0,(int)Math.floor(startMs*waveformPeaks.length/displayedDurationMs));
@@ -382,6 +423,54 @@ public final class SwaggaConsoleView extends FrameLayout {
             actions.playbackBpm(visibleBpm[0]);
         };
 
+
+        // State-backed neon overlay. Geometry matches the existing touch zones.
+        selectorOverlay = new View(context) {
+            private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private void glow(Canvas c, float x1, float y1, float x2, float y2, boolean active, int color) {
+                boolean pressed = touchX >= x1 && touchX <= x2 && touchY >= y1 && touchY <= y2;
+                if (!active && !pressed) return;
+                RectF rect = new RectF(getWidth()*x1, getHeight()*y1, getWidth()*x2, getHeight()*y2);
+                float radius = getHeight() * .012f;
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(color);
+                p.setAlpha(pressed ? 65 : 35);
+                c.drawRoundRect(rect, radius, radius, p);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(Math.max(2f, getHeight()*.008f));
+                p.setAlpha(70);
+                c.drawRoundRect(rect, radius, radius, p);
+                p.setStrokeWidth(Math.max(1.5f, getHeight()*.003f));
+                p.setAlpha(255);
+                c.drawRoundRect(rect, radius, radius, p);
+                p.setStyle(Paint.Style.FILL);
+            }
+            @Override protected void onDraw(Canvas c) {
+                glow(c,.015f,.15f,.13f,.24f,false,WAVE_CYAN);
+                glow(c,.20f,.15f,.29f,.24f,false,WAVE_CYAN);
+                glow(c,.30f,.15f,.42f,.24f,transportState == 0 && selectedChannel > 0,WAVE_CYAN);
+                glow(c,.46f,.15f,.54f,.24f,transportState == 1,WAVE_GREEN);
+                glow(c,.57f,.15f,.65f,.24f,transportState == 2,WAVE_CYAN);
+                glow(c,.69f,.15f,.84f,.24f,remixPhase != null,WAVE_GREEN);
+                glow(c,.87f,.15f,.97f,.24f,false,WAVE_CYAN);
+                float[] chLeft = {.015f,.18f,.35f,.52f};
+                float[] chRight = {.12f,.29f,.46f,.63f};
+                float[] muteX = {.066f,.234f,.402f,.568f};
+                float[] soloX = {.118f,.286f,.454f,.620f};
+                for (int i=0;i<4;i++) {
+                    glow(c,chLeft[i],.57f,chRight[i],.71f,selectedChannel == i+1,WAVE_CYAN);
+                    glow(c,muteX[i]-.022f,.905f,muteX[i]+.022f,.965f,mutedChannels[i],Color.rgb(255,100,60));
+                    // S currently selects a channel; do not fake a separate solo state.
+                    glow(c,soloX[i]-.022f,.905f,soloX[i]+.022f,.965f,false,WAVE_GREEN);
+                }
+                glow(c,.84f,.595f,.99f,.665f,false,WAVE_CYAN);
+                glow(c,.84f,.685f,.99f,.755f,false,WAVE_CYAN);
+                glow(c,.84f,.775f,.99f,.845f,false,WAVE_CYAN);
+                glow(c,.84f,.86f,.94f,.96f,false,WAVE_CYAN);
+            }
+        };
+        selectorOverlay.setClickable(false);
+        addView(selectorOverlay, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
         addView(new View(context) {
             @Override
