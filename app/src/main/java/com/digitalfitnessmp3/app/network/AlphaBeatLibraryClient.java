@@ -18,11 +18,18 @@ import java.util.UUID;
 public final class AlphaBeatLibraryClient {
     private final String apiOrigin;
     private final String storageOrigin;
+    private final String publicKey;
     private static final int MAX_JSON = 2 * 1024 * 1024;
 
-    public AlphaBeatLibraryClient(String apiOrigin, String storageOrigin) {
+    public AlphaBeatLibraryClient(String apiOrigin, String storageOrigin, String publicKey) {
         this.apiOrigin = requireOrigin(apiOrigin);
         this.storageOrigin = requireOrigin(storageOrigin);
+        if (!"https://zibsxuveoekuenppgkah.supabase.co".equals(this.apiOrigin)
+                || !this.apiOrigin.equals(this.storageOrigin)
+                || publicKey == null || !publicKey.matches("sb_publishable_[A-Za-z0-9_-]+")) {
+            throw new IllegalArgumentException("Configurazione QA non valida");
+        }
+        this.publicKey = publicKey;
     }
 
     private static String requireOrigin(String origin) {
@@ -44,6 +51,7 @@ public final class AlphaBeatLibraryClient {
             c.setUseCaches(false);
             c.setRequestProperty("Authorization", "Bearer " + token);
             c.setRequestProperty("Accept", "application/json");
+            c.setRequestProperty("apikey", publicKey);
             c.setRequestProperty("Cache-Control", "no-store");
             int status = c.getResponseCode();
             if (status != 200) throw new IOException("Libreria non disponibile: HTTP " + status);
@@ -62,34 +70,33 @@ public final class AlphaBeatLibraryClient {
         }
     }
 
-    public JSONArray list(String accessToken) throws IOException {
+    public JSONArray list(String accessToken, UUID ownerId) throws IOException {
+        if (ownerId == null) throw new IOException("Identificativo mancante");
         try {
-            return new JSONArray(getJson("/api/library/remixes", accessToken));
+            return new JSONArray(getJson("/rest/v1/user_remixes?select=id,title,target_bpm,created_at&owner_id=eq."
+                + ownerId + "&deletion_status=eq.active&order=created_at.desc&limit=100", accessToken));
         } catch (JSONException e) {
             throw new IOException("Risposta libreria non valida");
         }
     }
 
-    /** Validate the descriptor before any future authenticated audio download.
-     * A descriptor is not a public URL and does not itself authorize access. */
+    /** Resolve a private storage path through owner-scoped PostgREST. */
     public URL audioDescriptor(UUID remixId, UUID ownerId, String accessToken) throws IOException {
         if (remixId == null || ownerId == null) throw new IOException("Identificativo mancante");
         try {
-            JSONObject data = new JSONObject(getJson("/api/library/remixes/" + remixId + "/audio", accessToken));
-            String prefix = storageOrigin + "/storage/v1/object/authenticated/alphabeat-remixes/" + ownerId + "/";
-            String url = data.getString("url");
-            if (!data.getBoolean("requires_authentication") || !url.startsWith(prefix)) {
-                throw new IOException("Percorso audio non autorizzato");
-            }
-            String name = url.substring(prefix.length());
-            if (!name.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(mp3|wav)")) {
+            JSONArray rows = new JSONArray(getJson("/rest/v1/user_remixes?select=id,owner_id,storage_path&id=eq."
+                + remixId + "&owner_id=eq." + ownerId + "&deletion_status=eq.active&limit=1", accessToken));
+            if (rows.length() != 1) throw new IOException("Remix non disponibile");
+            JSONObject row = rows.getJSONObject(0);
+            if (!remixId.toString().equals(row.getString("id")) || !ownerId.toString().equals(row.getString("owner_id")))
+                throw new IOException("Remix non autorizzato");
+            String path = row.getString("storage_path");
+            String prefix = ownerId.toString() + "/";
+            if (!path.startsWith(prefix)) throw new IOException("Percorso audio non autorizzato");
+            String name = path.substring(prefix.length());
+            if (!name.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(mp3|wav)"))
                 throw new IOException("Nome audio non valido");
-            }
-            String type = data.getString("content_type");
-            if (!(name.endsWith(".mp3") ? "audio/mpeg" : "audio/wav").equals(type)) {
-                throw new IOException("Formato audio non valido");
-            }
-            return new URL(url);
+            return new URL(storageOrigin + "/storage/v1/object/authenticated/alphabeat-remixes/" + path);
         } catch (JSONException e) {
             throw new IOException("Risposta audio non valida");
         }
@@ -104,7 +111,7 @@ public final class AlphaBeatLibraryClient {
         if (context == null || sessionStillCurrent == null || !sessionStillCurrent.getAsBoolean()) {
             throw new IOException("Sessione non disponibile");
         }
-        if (publicKey == null || publicKey.isEmpty() || publicKey.contains("\r")
+        if (!this.publicKey.equals(publicKey) || publicKey.isEmpty() || publicKey.contains("\r")
                 || publicKey.contains("\n") || publicKey.startsWith("sb_secret_")) {
             throw new IOException("Configurazione libreria non valida");
         }
@@ -126,7 +133,7 @@ public final class AlphaBeatLibraryClient {
         if (!sessionStillCurrent.getAsBoolean()) throw new IOException("Sessione cambiata");
         String suffix = audio.getPath().endsWith(".mp3") ? ".mp3" : ".wav";
         String mime = ".mp3".equals(suffix) ? "audio/mpeg" : "audio/wav";
-        final long maxBytes = 100L * 1024 * 1024;
+        final long maxBytes = 50_000_000L;
         java.io.File dir = new java.io.File(context.getCacheDir(), "alphabeat-library");
         if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cache non disponibile");
         java.io.File target = java.io.File.createTempFile("remix-", suffix, dir);
@@ -161,7 +168,7 @@ public final class AlphaBeatLibraryClient {
                         throw new IOException("Download annullato");
                     }
                     count += n;
-                    if (count > maxBytes) throw new IOException("Audio superiore a 100 MB");
+                    if (count > maxBytes) throw new IOException("Audio superiore a 50 MB");
                     out.write(buffer, 0, n);
                 }
             }
