@@ -79,7 +79,7 @@ public final class SwaggaConsoleView extends FrameLayout {
     private double windowStart() { return timelineBpm > 0 ? (displayedPositionMs * (long) timelineBpm / 60000L / 32L) * windowSpan() : 0; }
     private float seekProgress(float x) {
         float f = Math.max(0f, Math.min(1f,(x-WAVE_LEFT)/(WAVE_RIGHT-WAVE_LEFT)));
-        return draggingWindow && displayedDurationMs > 0 ? (float)Math.max(0,Math.min(1,(dragStart+f*windowSpan())/displayedDurationMs)) : f;
+        return f; // Full-track waveform: seek across the complete recording.
     }
     private String displayedTrackTitle = "Nessun brano caricato";
     private int displayedDurationMs = 0;
@@ -331,10 +331,10 @@ public final class SwaggaConsoleView extends FrameLayout {
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(Color.rgb(3, 14, 17));
                 canvas.drawRect(left, top, right, bottom, paint);
-                boolean live = timelineBpm > 0;
-                double startMs = live ? windowStart() : 0;
-                double spanMs = live ? windowSpan() : displayedDurationMs;
-                float local = live ? (float)Math.max(0,Math.min(1,(displayedPositionMs-startMs)/spanMs)) : waveformProgress;
+                boolean live = false; // Restore 2.2.2 overview; live counts remain in timelineOverlay.
+                double startMs = 0;
+                double spanMs = displayedDurationMs;
+                float local = waveformProgress;
                 if (live) for(int beat=0;beat<=32;beat++) {
                     float x = left + width * beat / 32f;
                     paint.setColor(beat%8==0 ? Color.rgb(23,125,129) : Color.rgb(20,49,56));
@@ -364,7 +364,7 @@ public final class SwaggaConsoleView extends FrameLayout {
                         float normalized = Math.min(1f, Math.max(0f, amplitude) / waveformReference);
                         float extent = (float)Math.pow(normalized, .56) * height * .465f;
                         if (extent <= 0f) continue;
-                        paint.setColor(fraction <= local ? WAVE_GREEN : Color.rgb(65, 203, 119));
+                        paint.setColor(fraction <= local ? WAVE_CYAN : WAVE_GREEN);
                         canvas.drawLine(x,middle-extent,x,middle+extent,paint);
                     }
                 }
@@ -511,7 +511,7 @@ public final class SwaggaConsoleView extends FrameLayout {
                         && y >= .308f && y <= WAVE_BOTTOM
                         && x >= WAVE_LEFT && x <= WAVE_RIGHT) {
                     waveformDragging = true;
-                    draggingWindow = timelineBpm > 0 && y >= WAVE_TOP;
+                    draggingWindow = false;
                     dragStart = windowStart();
                     float progress = seekProgress(x);
                     actions.seek(progress);
