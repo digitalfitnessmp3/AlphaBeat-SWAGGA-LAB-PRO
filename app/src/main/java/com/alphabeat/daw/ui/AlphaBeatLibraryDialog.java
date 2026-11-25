@@ -60,7 +60,7 @@ public final class AlphaBeatLibraryDialog {
         message("Caricamento libreria personale…");
         new Thread(() -> {
             try {
-                JSONArray items = client.list(token);
+                JSONArray items = client.list(token, owner);
                 ArrayList<JSONObject> rows = new ArrayList<>();
                 ArrayList<String> labels = new ArrayList<>();
                 for (int i = 0; i < items.length(); i++) {
