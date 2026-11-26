@@ -114,7 +114,7 @@ public final class MainActivity extends Activity {
 
     private Uri selectedAudio;
     private android.media.MediaPlayer player;
-    private float masterVolume = 0.75f;
+    private float masterVolume = 1.00f; // Matches the master fader at launch.
 
     private void applyEffectiveVolume() {
         if (player == null) return;
@@ -151,6 +151,7 @@ public final class MainActivity extends Activity {
 
     private void setMasterVolume(float value) {
         masterVolume = Math.max(0f, Math.min(1f, value));
+        if (swaggaView != null) swaggaView.setMasterFaderVolume(masterVolume);
         if (player != null) {
             applyEffectiveVolume();
         }
@@ -553,6 +554,7 @@ public final class MainActivity extends Activity {
     }
 
     private android.media.audiofx.Equalizer swaggaEqualizer;
+    private final java.util.Map<Integer, Short> eqLevels = new java.util.HashMap<>();
 
     private void attachSwaggaEq() {
         if (player == null) return;
@@ -565,10 +567,17 @@ public final class MainActivity extends Activity {
         try {
             swaggaEqualizer = new android.media.audiofx.Equalizer(
                     0, player.getAudioSessionId());
+            short[] limits = swaggaEqualizer.getBandLevelRange();
+            for (short band = 0; band < swaggaEqualizer.getNumberOfBands(); band++) {
+                int frequency = swaggaEqualizer.getCenterFreq(band);
+                short level = eqLevels.getOrDefault(frequency, (short) 0);
+                swaggaEqualizer.setBandLevel(band, (short) Math.max(limits[0], Math.min(limits[1], level)));
+            }
             swaggaEqualizer.setEnabled(true);
         } catch (RuntimeException e) {
             android.util.Log.w("SWAGGA_EQ",
                     "Equalizzatore non disponibile", e);
+            if (swaggaEqualizer != null) swaggaEqualizer.release();
             swaggaEqualizer = null;
         }
     }
@@ -626,8 +635,13 @@ public final class MainActivity extends Activity {
                                 android.widget.SeekBar bar,
                                 int progress, boolean fromUser) {
                             if (fromUser && swaggaEqualizer != null) {
-                                swaggaEqualizer.setBandLevel(
-                                        band, (short)(min + progress));
+                                try {
+                                    short level = (short)(min + progress);
+                                    swaggaEqualizer.setBandLevel(band, level);
+                                    eqLevels.put(swaggaEqualizer.getCenterFreq(band), level);
+                                } catch (RuntimeException error) {
+                                    android.util.Log.w("SWAGGA_EQ", "Regolazione EQ non disponibile", error);
+                                }
                             }
                         }
                         public void onStartTrackingTouch(
