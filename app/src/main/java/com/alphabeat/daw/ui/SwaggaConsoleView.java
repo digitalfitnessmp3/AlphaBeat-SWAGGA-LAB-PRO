@@ -347,9 +347,10 @@ public final class SwaggaConsoleView extends FrameLayout {
                     paint.setTextAlign(Paint.Align.CENTER);
                     canvas.drawText(waveformStatus, (left + right) / 2f, middle, paint);
                 }
-                if (displayedDurationMs > 0 && spanMs > 0 && waveformPeaks.length > 0) {
-                    int first = Math.max(0,(int)Math.floor(startMs*waveformPeaks.length/displayedDurationMs));
-                    int end = Math.min(waveformPeaks.length,(int)Math.ceil((startMs+spanMs)*waveformPeaks.length/displayedDurationMs));
+                // Full-track overview uses normalized sample indices, not metadata duration.
+                if (waveformPeaks.length > 0) {
+                    int first = 0;
+                    int end = waveformPeaks.length;
                     int stride = Math.max(1,(int)Math.ceil((end-first)/Math.max(1.0,width/2)));
                     paint.setStrokeWidth(Math.max(1.5f, width / Math.max(1, (end-first)/stride) * .76f));
                     paint.setStrokeCap(Paint.Cap.ROUND);
@@ -357,8 +358,7 @@ public final class SwaggaConsoleView extends FrameLayout {
                         float amplitude=0;
                         int jEnd=Math.min(end,i+stride);
                         for(int j=i;j<jEnd;j++) amplitude=Math.max(amplitude,waveformPeaks[j]);
-                        double time=(i+(jEnd-i)/2.0)*displayedDurationMs/waveformPeaks.length;
-                        float fraction=(float)((time-startMs)/spanMs);
+                        float fraction=(float)((i+(jEnd-i)/2.0)/waveformPeaks.length);
                         if(fraction<0 || fraction>1) continue;
                         float x=left+fraction*width;
                         float normalized = Math.min(1f, Math.max(0f, amplitude) / waveformReference);
