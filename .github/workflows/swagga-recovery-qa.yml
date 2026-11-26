@@ -20,8 +20,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK 36
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0" "platform-tools"
+      - name: Install SDK 36 using runner Android SDK
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)"
+          fi
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-36' 'build-tools;35.0.0'
       - name: Build isolated debug APK
         run: bash gradlew --no-daemon :app:assembleDebug
       - name: Verify package and signature
@@ -29,8 +37,9 @@ jobs:
           set -euo pipefail
           apk=app/build/outputs/apk/debug/app-debug.apk
           test -s "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.alphabeat.daw.swaggalab.recoveryqa'"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          "$SDK_ROOT/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='com.alphabeat.daw.swaggalab.recoveryqa'"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify "$apk"
           mkdir -p recovery-artifact
           cp "$apk" recovery-artifact/Swagga-Lab-Recovery-QA.apk
           (cd recovery-artifact && sha256sum Swagga-Lab-Recovery-QA.apk > SHA256SUMS.txt)
