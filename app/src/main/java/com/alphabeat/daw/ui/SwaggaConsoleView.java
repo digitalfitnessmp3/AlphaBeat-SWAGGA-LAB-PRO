@@ -37,6 +37,10 @@ public final class SwaggaConsoleView extends FrameLayout {
     }
 
     private final Actions actions;
+    private SwaggaFaderOverlay faderOverlay;
+    public void setMasterFaderVolume(float volume) {
+        if (faderOverlay != null) faderOverlay.setVolume(4, volume);
+    }
     private float[] waveformPeaks = new float[0];
     private float waveformReference = 1f;
     private float waveformProgress = 0f;
@@ -383,7 +387,7 @@ public final class SwaggaConsoleView extends FrameLayout {
         // Livello grafico dei cinque fader.
         // Non intercetta i tocchi: i controlli restano
         // gestiti dalla console.
-        final SwaggaFaderOverlay faderOverlay =
+        faderOverlay =
                 new SwaggaFaderOverlay(context);
 
         addView(faderOverlay, new LayoutParams(
