@@ -59,8 +59,14 @@ public final class WaveformAnalyzer {
                     : -1L;
 
             if (durationUs <= 0) {
-                throw new Exception("Durata audio non disponibile");
+                android.media.MediaMetadataRetriever metadata = new android.media.MediaMetadataRetriever();
+                try {
+                    metadata.setDataSource(context, uri);
+                    String duration = metadata.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+                    if (duration != null) durationUs = Long.parseLong(duration) * 1000L;
+                } finally { metadata.release(); }
             }
+            if (durationUs <= 0) throw new Exception("Durata audio non disponibile");
 
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             boolean inputDone = false;
@@ -71,8 +77,13 @@ public final class WaveformAnalyzer {
                     MediaFormat.KEY_SAMPLE_RATE);
 
             long decodedFrames = 0;
+            int encoding = android.media.AudioFormat.ENCODING_PCM_16BIT;
+            long lastProgress = android.os.SystemClock.elapsedRealtime();
 
             while (!outputDone) {
+                if (android.os.SystemClock.elapsedRealtime() - lastProgress > 15000L) {
+                    throw new java.io.IOException("Decoder waveform senza avanzamento");
+                }
                 if (!inputDone) {
                     int inputIndex = codec.dequeueInputBuffer(10000);
 
@@ -109,13 +120,14 @@ public final class WaveformAnalyzer {
                     sampleRate = decoded.getInteger(
                             MediaFormat.KEY_SAMPLE_RATE);
 
-                    int encoding = decoded.containsKey(
+                    encoding = decoded.containsKey(
                             MediaFormat.KEY_PCM_ENCODING)
                             ? decoded.getInteger(
                                     MediaFormat.KEY_PCM_ENCODING)
                             : 2;
 
-                    if (encoding != 2) {
+                    if (encoding != android.media.AudioFormat.ENCODING_PCM_16BIT
+                            && encoding != android.media.AudioFormat.ENCODING_PCM_FLOAT) {
                         throw new Exception(
                                 "PCM non supportato: " + encoding);
                     }
@@ -129,14 +141,16 @@ public final class WaveformAnalyzer {
                         ByteBuffer pcm = buffer.slice()
                                 .order(ByteOrder.LITTLE_ENDIAN);
 
-                        int frames = info.size / (2 * channels);
+                        lastProgress = android.os.SystemClock.elapsedRealtime();
+                        boolean floating = encoding == android.media.AudioFormat.ENCODING_PCM_FLOAT;
+                        int frames = info.size / ((floating ? 4 : 2) * channels);
 
                         for (int frame = 0; frame < frames; frame++) {
                             float amplitude = 0f;
 
                             for (int ch = 0; ch < channels; ch++) {
-                                float value =
-                                        Math.abs(pcm.getShort() / 32768f);
+                                float sample = floating ? pcm.getFloat() : pcm.getShort() / 32768f;
+                                float value = Float.isFinite(sample) ? Math.min(1f, Math.abs(sample)) : 0f;
                                 amplitude = Math.max(amplitude, value);
                             }
 
@@ -164,6 +178,7 @@ public final class WaveformAnalyzer {
                 }
             }
 
+            if (decodedFrames == 0) throw new java.io.IOException("Nessun campione audio decodificato");
             return peaks;
 
         } finally {
