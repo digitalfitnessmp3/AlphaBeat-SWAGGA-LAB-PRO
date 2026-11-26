@@ -43,6 +43,18 @@ android {
     }
 
 
+    // Side-by-side debug build: never replaces the installed production app.
+    buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".recoveryqa"
+            versionNameSuffix = "-recoveryQA"
+            manifestPlaceholders["swaggaAppLabel"] = "Swagga Lab Recovery QA"
+        }
+        getByName("release") {
+            manifestPlaceholders["swaggaAppLabel"] = "AlphaBeat SWAGGA LAB PRO"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
